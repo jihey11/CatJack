@@ -1,0 +1,25 @@
+{
+  "name": "catjack",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cat-themed multiplayer blackjack using Deck of Cards API, Socket.IO and MongoDB",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "check": "node --check server.js && node --check src/db.js && node --check src/auth.js && node --check public/script.js",
+    "vercel-dev": "vercel dev"
+  },
+  "engines": {
+    "node": "20.x"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "dotenv": "^17.2.2",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb": "^6.19.0",
+    "socket.io": "^4.8.1",
+    "@socket.io/mongo-adapter": "^0.4.0"
+  }
+}
