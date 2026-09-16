@@ -16,13 +16,24 @@ if (!process.env.JWT_SECRET) {
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  // Vercel에서는 Socket.IO의 기본 long-polling(XHR)이 서로 다른 함수 인스턴스로
+  // 분산될 수 있어 "xhr poll error"가 발생할 수 있습니다.
+  // WebSocket을 바로 사용해 한 연결이 한 인스턴스에 유지되도록 합니다.
+  transports: ["websocket"],
+  allowUpgrades: false,
+  pingInterval: 25000,
+  pingTimeout: 20000,
+  perMessageDeflate: false
+});
 const PORT = Number(process.env.PORT || 3000);
 
 app.use(express.json({ limit: "100kb" }));
 
+// Vercel과 로컬 환경 모두에서 public 폴더의 정적 파일을 제공합니다.
 app.use(express.static(path.join(__dirname, "public")));
 
+// 사이트 루트(/)로 접속하면 메인 페이지를 반환합니다.
 app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "public", "index.html"));
 });
@@ -186,6 +197,17 @@ app.get("/api/ranking", async (_req, res) => {
   });
 });
 
+// 로비를 Socket.IO 연결 전에 빠르게 표시하기 위한 HTTP 방 목록 API입니다.
+// 실시간 갱신은 이후 WebSocket의 rooms-list 이벤트가 담당합니다.
+app.get("/api/rooms", authMiddleware, async (_req, res) => {
+  try {
+    res.json({ rooms: await publicRoomList() });
+  } catch (error) {
+    console.error("방 목록 조회 실패:", error);
+    res.status(500).json({ error: "방 목록을 불러오지 못했습니다." });
+  }
+});
+
 const ROOM_COLLECTION = "rooms";
 
 async function loadRoom(code) {
@@ -207,7 +229,7 @@ async function findUserRoom(userId) {
 
 async function saveRoom(room) {
   const db = getDB();
-  const doc = { ...room, updatedAt: new Date() };
+  const doc = { ...room, playersCount: room.players?.length || 0, updatedAt: new Date() };
   delete doc._id;
   await db.collection(ROOM_COLLECTION).updateOne(
     { code: room.code },
@@ -306,20 +328,23 @@ function roomState(room) {
 async function publicRoomList() {
   const db = getDB();
   const roomDocs = await db.collection(ROOM_COLLECTION)
-    .find({ status: "WAITING" }, { projection: { _id: 0, code: 1, name: 1, maxPlayers: 1, minBet: 1, players: 1 } })
+    .find(
+      { status: "WAITING" },
+      { projection: { _id: 0, code: 1, name: 1, maxPlayers: 1, minBet: 1, playersCount: 1, "players.userId": 1 } }
+    )
     .sort({ updatedAt: -1 })
     .limit(50)
     .toArray();
 
   return roomDocs
-    .filter((room) => (room.players?.length || 0) < room.maxPlayers)
     .map((room) => ({
       code: room.code,
       name: room.name,
-      players: room.players?.length || 0,
+      players: Number.isFinite(room.playersCount) ? room.playersCount : (room.players?.length || 0),
       maxPlayers: room.maxPlayers,
       minBet: room.minBet
-    }));
+    }))
+    .filter((room) => room.players < room.maxPlayers);
 }
 
 async function emitRoom(room) {
@@ -676,7 +701,6 @@ io.on("connection", async (socket) => {
         }]
       };
 
-      await saveRoom(room);
       socket.data.roomCode = code;
       socket.join(code);
       await emitRoom(room);

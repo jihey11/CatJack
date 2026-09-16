@@ -98,12 +98,35 @@ async function enterApp() {
   els.welcomeNickname.textContent = currentUser.nickname;
   els.headerChips.textContent = formatNumber(currentUser.chips);
   showLobby();
+  // WebSocket 핸드셰이크를 기다리지 않고 방 목록을 먼저 가져옵니다.
+  refreshRoomListHttp();
   connectSocket();
+}
+
+async function refreshRoomListHttp() {
+  try {
+    const data = await api("/api/rooms");
+    availableRooms = Array.isArray(data.rooms) ? data.rooms : [];
+    renderRoomList();
+  } catch (_error) {
+    // WebSocket이 연결되면 rooms-list 이벤트가 다시 갱신하므로 여기서는 조용히 무시합니다.
+  }
 }
 
 function connectSocket() {
   if (socket) socket.disconnect();
-  socket = io({ auth: { token } });
+  socket = io({
+    auth: { token },
+    // Vercel에서는 Socket.IO 기본 XHR polling이 인스턴스 사이에서 끊길 수 있으므로
+    // WebSocket으로 바로 연결합니다.
+    transports: ["websocket"],
+    upgrade: false,
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 500,
+    reconnectionDelayMax: 3000,
+    timeout: 10000
+  });
 
   socket.on("connect", () => {
     const savedRoom = sessionStorage.getItem("catjack_room");
@@ -117,8 +140,23 @@ function connectSocket() {
     }
   });
 
+  let connectionErrorShown = false;
   socket.on("connect_error", (error) => {
-    showToast(error.message || "실시간 서버 연결에 실패했습니다.", true);
+    const authError = /로그인|사용자|만료/.test(error?.message || "");
+    if (authError) {
+      showToast(error.message, true);
+      return;
+    }
+    if (!connectionErrorShown) {
+      connectionErrorShown = true;
+      showToast("실시간 연결이 잠시 끊겼습니다. 자동으로 다시 연결합니다.", true);
+    }
+  });
+
+  socket.io.on("reconnect", () => {
+    connectionErrorShown = false;
+    refreshRoomListHttp();
+    showToast("실시간 서버에 다시 연결되었습니다.");
   });
 
   socket.on("rooms-list", (rooms) => {
