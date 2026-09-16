@@ -20,9 +20,12 @@ const io = new Server(server);
 const PORT = Number(process.env.PORT || 3000);
 
 app.use(express.json({ limit: "100kb" }));
-if (!process.env.VERCEL) {
-  app.use(express.static(path.join(__dirname, "public")));
-}
+
+app.use(express.static(path.join(__dirname, "public")));
+
+app.get("/", (_req, res) => {
+  res.sendFile(path.join(__dirname, "public", "index.html"));
+});
 
 let startupPromise;
 
