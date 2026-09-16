@@ -18,7 +18,10 @@ const els = {
   modal: $("#modal"), modalTitle: $("#modalTitle"), modalBody: $("#modalBody"), modalClose: $("#modalClose"), toast: $("#toast")
 };
 
-let token = localStorage.getItem("catjack_token") || "";
+// 로그인 정보는 탭마다 따로 보관합니다.
+// localStorage를 사용하면 같은 브라우저의 다른 탭/창에서 로그인 계정이 서로 덮어써질 수 있습니다.
+localStorage.removeItem("catjack_token");
+let token = sessionStorage.getItem("catjack_token") || "";
 let currentUser = null;
 let socket = null;
 let currentRoom = null;
@@ -59,9 +62,22 @@ function setAuthTab(mode) {
   els.signupForm.classList.toggle("hidden", login);
 }
 
+function roomStorageKey() {
+  return currentUser?.id ? `catjack_room_${currentUser.id}` : "catjack_room";
+}
+
+function clearStoredRooms() {
+  const keys = [];
+  for (let i = 0; i < sessionStorage.length; i += 1) {
+    const key = sessionStorage.key(i);
+    if (key === "catjack_room" || key?.startsWith("catjack_room_")) keys.push(key);
+  }
+  keys.forEach((key) => sessionStorage.removeItem(key));
+}
+
 function showLobby() {
   currentRoom = null;
-  sessionStorage.removeItem("catjack_room");
+  sessionStorage.removeItem(roomStorageKey());
   els.roomView.classList.add("hidden");
   els.lobbyView.classList.remove("hidden");
 }
@@ -72,17 +88,19 @@ function showRoom() {
 }
 
 function saveSession(authData) {
+  // 같은 탭에서 다른 계정으로 로그인할 때 이전 계정의 방 정보를 이어받지 않도록 정리합니다.
+  clearStoredRooms();
   token = authData.token;
   currentUser = authData.user;
-  localStorage.setItem("catjack_token", token);
+  sessionStorage.setItem("catjack_token", token);
 }
 
 function logout() {
   token = "";
   currentUser = null;
   currentRoom = null;
-  localStorage.removeItem("catjack_token");
-  sessionStorage.removeItem("catjack_room");
+  sessionStorage.removeItem("catjack_token");
+  clearStoredRooms();
   if (socket) socket.disconnect();
   socket = null;
   els.appView.classList.add("hidden");
@@ -129,11 +147,11 @@ function connectSocket() {
   });
 
   socket.on("connect", () => {
-    const savedRoom = sessionStorage.getItem("catjack_room");
+    const savedRoom = sessionStorage.getItem(roomStorageKey());
     if (savedRoom) {
       socket.emit("join-room", { code: savedRoom }, (result) => {
         if (!result?.ok) {
-          sessionStorage.removeItem("catjack_room");
+          sessionStorage.removeItem(roomStorageKey());
           showLobby();
         }
       });
@@ -166,7 +184,7 @@ function connectSocket() {
 
   socket.on("room-state", (room) => {
     currentRoom = room;
-    sessionStorage.setItem("catjack_room", room.code);
+    sessionStorage.setItem(roomStorageKey(), room.code);
     showRoom();
     renderRoom();
   });

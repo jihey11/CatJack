@@ -642,6 +642,38 @@ async function removePlayerFromWaitingRoom(room, userId) {
   await emitRoom(room);
 }
 
+// Vercel에서 연결이 갑자기 종료되면 MongoDB의 player.connected 값이
+// 이전 상태로 남을 수 있습니다. 다른 방에 들어가려는 순간 실제 Socket.IO
+// 연결이 살아 있는지 확인하고, 끊긴 WAITING/RESULT 방 기록은 자동 정리합니다.
+async function findConflictingUserRoom(userId, targetCode = null) {
+  const code = await findUserRoom(userId);
+  if (!code || code === targetCode) return null;
+
+  const room = await loadRoom(code);
+  if (!room) return null;
+  const player = room.players.find((p) => p.userId === userId);
+  if (!player) return null;
+
+  let socketAlive = false;
+  if (player.socketId) {
+    try {
+      const sockets = await io.in(player.socketId).fetchSockets();
+      socketAlive = sockets.some((connectedSocket) => connectedSocket.id === player.socketId);
+    } catch (error) {
+      console.error("기존 소켓 상태 확인 실패:", error);
+      socketAlive = Boolean(player.connected && player.socketId);
+    }
+  }
+
+  if (!socketAlive && ["WAITING", "RESULT"].includes(room.status)) {
+    await removePlayerFromWaitingRoom(room, userId);
+    await emitRoomList();
+    return null;
+  }
+
+  return code;
+}
+
 io.use(async (socket, next) => {
   try {
     await ensureStarted();
@@ -666,7 +698,8 @@ io.on("connection", async (socket) => {
 
   socket.on("create-room", async (payload = {}, callback = () => {}) => {
     try {
-      if (await findUserRoom(socket.user.id)) throw new Error("이미 다른 방에 참가 중입니다.");
+      const conflictingRoom = await findConflictingUserRoom(socket.user.id);
+      if (conflictingRoom) throw new Error("이미 다른 방에 참가 중입니다.");
       const db = getDB();
       const freshUser = await db.collection("users").findOne({ _id: new ObjectId(socket.user.id) });
       const code = await randomRoomCode();
@@ -732,7 +765,8 @@ io.on("connection", async (socket) => {
         return callback({ ok: true, code, rejoined: true });
       }
 
-      if (await findUserRoom(socket.user.id)) throw new Error("이미 다른 방에 참가 중입니다.");
+      const conflictingRoom = await findConflictingUserRoom(socket.user.id, code);
+      if (conflictingRoom) throw new Error("이미 다른 방에 참가 중입니다.");
       if (room.status !== "WAITING") throw new Error("이미 게임이 시작된 방입니다.");
       if (room.players.length >= room.maxPlayers) throw new Error("방이 가득 찼습니다.");
 
