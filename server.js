@@ -11,6 +11,14 @@ const { createAdapter } = require("@socket.io/mongo-adapter");
 const { connectDB, ensureDatabaseSetup, getDB, closeDB } = require("./src/db");
 const { createToken, verifyToken, authMiddleware } = require("./src/auth");
 const { roomExpiresAt, roomNotExpiredFilter } = require("./src/roomLifecycle");
+const {
+  DAILY_REWARD_CHIPS,
+  DAILY_REWARD_COOLDOWN_MS,
+  RECOVERY_THRESHOLD_CHIPS,
+  RECOVERY_TARGET_CHIPS,
+  RECOVERY_COOLDOWN_MS,
+  buildChipRewardStatus
+} = require("./src/chipRewards");
 
 if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET가 환경 변수에 설정되어 있지 않습니다.");
@@ -177,6 +185,113 @@ app.get("/api/me", authMiddleware, (req, res) => {
   res.json({ user: publicUser(req.user) });
 });
 
+
+// CHIP 보상 상태 조회
+app.get("/api/chip-rewards", authMiddleware, (req, res) => {
+  res.json({ rewards: buildChipRewardStatus(req.user) });
+});
+
+// 일일 CHIP 보상: 24시간마다 +300 CHIP
+app.post("/api/chip-rewards/daily", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user._id.toString();
+    if (await findUserRoom(userId)) {
+      return res.status(409).json({ error: "게임방을 나간 뒤 CHIP 보상을 받을 수 있습니다." });
+    }
+
+    const db = getDB();
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - DAILY_REWARD_COOLDOWN_MS);
+    const result = await db.collection("users").updateOne(
+      {
+        _id: req.user._id,
+        $or: [
+          { "rewards.dailyClaimedAt": { $exists: false } },
+          { "rewards.dailyClaimedAt": { $lte: cutoff } }
+        ]
+      },
+      {
+        $inc: { chips: DAILY_REWARD_CHIPS },
+        $set: { "rewards.dailyClaimedAt": now }
+      }
+    );
+
+    const user = await db.collection("users").findOne(
+      { _id: req.user._id },
+      { projection: { passwordHash: 0 } }
+    );
+
+    if (!result.matchedCount) {
+      return res.status(409).json({
+        error: "아직 일일 보상 시간이 되지 않았습니다.",
+        user: publicUser(user),
+        rewards: buildChipRewardStatus(user, now)
+      });
+    }
+
+    res.json({
+      message: `일일 보상으로 ${DAILY_REWARD_CHIPS} CHIP을 받았습니다.`,
+      user: publicUser(user),
+      rewards: buildChipRewardStatus(user, now)
+    });
+  } catch (error) {
+    console.error("일일 CHIP 보상 오류:", error);
+    res.status(500).json({ error: "일일 CHIP 보상을 처리하지 못했습니다." });
+  }
+});
+
+// 긴급 복구: CHIP이 50 미만이면 500 CHIP까지 복구, 12시간 쿨타임
+app.post("/api/chip-rewards/recovery", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user._id.toString();
+    if (await findUserRoom(userId)) {
+      return res.status(409).json({ error: "게임방을 나간 뒤 긴급 CHIP 복구를 사용할 수 있습니다." });
+    }
+
+    const db = getDB();
+    const now = new Date();
+    const cutoff = new Date(now.getTime() - RECOVERY_COOLDOWN_MS);
+    const result = await db.collection("users").updateOne(
+      {
+        _id: req.user._id,
+        chips: { $lt: RECOVERY_THRESHOLD_CHIPS },
+        $or: [
+          { "rewards.recoveryClaimedAt": { $exists: false } },
+          { "rewards.recoveryClaimedAt": { $lte: cutoff } }
+        ]
+      },
+      {
+        $set: {
+          chips: RECOVERY_TARGET_CHIPS,
+          "rewards.recoveryClaimedAt": now
+        }
+      }
+    );
+
+    const user = await db.collection("users").findOne(
+      { _id: req.user._id },
+      { projection: { passwordHash: 0 } }
+    );
+
+    if (!result.matchedCount) {
+      const status = buildChipRewardStatus(user, now);
+      const error = !status.recovery.lowEnough
+        ? `보유 CHIP이 ${RECOVERY_THRESHOLD_CHIPS} 미만일 때 사용할 수 있습니다.`
+        : "아직 긴급 복구 대기 시간이 남아 있습니다.";
+      return res.status(409).json({ error, user: publicUser(user), rewards: status });
+    }
+
+    res.json({
+      message: `긴급 복구로 보유 CHIP이 ${RECOVERY_TARGET_CHIPS}이 되었습니다.`,
+      user: publicUser(user),
+      rewards: buildChipRewardStatus(user, now)
+    });
+  } catch (error) {
+    console.error("긴급 CHIP 복구 오류:", error);
+    res.status(500).json({ error: "긴급 CHIP 복구를 처리하지 못했습니다." });
+  }
+});
+
 app.get("/api/history", authMiddleware, async (req, res) => {
   const db = getDB();
   const games = await db.collection("games")
@@ -192,6 +307,7 @@ app.get("/api/history", authMiddleware, async (req, res) => {
       roomName: game.roomName,
       result: mine?.result,
       score: mine?.score,
+      scores: Array.isArray(mine?.scores) ? mine.scores : (mine?.score != null ? [mine.score] : []),
       dealerScore: game.dealerScore,
       bet: mine?.bet,
       chipChange: mine?.chipChange,
@@ -413,6 +529,9 @@ function visibleDealerCards(room) {
 }
 
 function roomState(room) {
+  const currentTurnUserId = room.turnIndex >= 0 ? room.players[room.turnIndex]?.userId || null : null;
+  const currentTurnHandIndex = room.turnIndex >= 0 ? Math.max(0, Number(room.turnHandIndex) || 0) : null;
+
   return {
     code: room.code,
     revision: Number(room.revision) || 0,
@@ -421,22 +540,56 @@ function roomState(room) {
     maxPlayers: room.maxPlayers,
     minBet: room.minBet,
     status: room.status,
-    currentTurnUserId: room.turnIndex >= 0 ? room.players[room.turnIndex]?.userId || null : null,
+    currentTurnUserId,
+    currentTurnHandIndex,
     dealerCards: visibleDealerCards(room),
     dealerScore: ["DEALER_TURN", "RESULT"].includes(room.status) ? cardScore(room.dealerHand) : null,
-    players: room.players.map((p) => ({
-      userId: p.userId,
-      nickname: p.nickname,
-      chips: p.chips,
-      bet: p.bet,
-      ready: p.ready,
-      connected: p.connected,
-      cards: p.hand.map(compactCard),
-      score: p.hand.length ? cardScore(p.hand) : null,
-      state: p.state,
-      result: p.result || null,
-      chipChange: p.chipChange || 0
-    })),
+    players: room.players.map((p) => {
+      const hands = Array.isArray(p.hands) && p.hands.length
+        ? p.hands
+        : [{
+            cards: Array.isArray(p.hand) ? p.hand : [],
+            bet: Number(p.bet) || 0,
+            state: p.state || "WAITING",
+            result: p.result || null,
+            chipChange: Number(p.chipChange) || 0,
+            doubled: false,
+            split: false
+          }];
+      const activeIndex = currentTurnUserId === p.userId ? currentTurnHandIndex : 0;
+      const primary = hands[activeIndex] || hands[0];
+      const roundBet = ["PLAYING", "DEALER_TURN", "RESULT"].includes(room.status)
+        ? hands.reduce((sum, hand) => sum + (Number(hand.bet) || 0), 0)
+        : p.bet;
+      return {
+        userId: p.userId,
+        nickname: p.nickname,
+        chips: p.chips,
+        bet: roundBet,
+        ready: p.ready,
+        connected: p.connected,
+        cards: primary?.cards?.map(compactCard) || [],
+        score: primary?.cards?.length ? cardScore(primary.cards) : null,
+        state: primary?.state || p.state,
+        result: p.result || null,
+        chipChange: p.chipChange || 0,
+        currentHandIndex: activeIndex,
+        canDouble: room.status === "PLAYING" && currentTurnUserId === p.userId && canDoubleHand(p, primary),
+        canSplit: room.status === "PLAYING" && currentTurnUserId === p.userId && canSplitHand(p, primary),
+        hands: hands.map((hand, handIndex) => ({
+          index: handIndex,
+          cards: (hand.cards || []).map(compactCard),
+          score: hand.cards?.length ? cardScore(hand.cards) : null,
+          bet: Number(hand.bet) || 0,
+          state: hand.state || "WAITING",
+          result: hand.result || null,
+          chipChange: Number(hand.chipChange) || 0,
+          doubled: Boolean(hand.doubled),
+          split: Boolean(hand.split),
+          active: room.status === "PLAYING" && currentTurnUserId === p.userId && currentTurnHandIndex === handIndex
+        }))
+      };
+    }),
     messages: room.messages.slice(-30)
   };
 }
@@ -548,29 +701,79 @@ async function refundBets(room) {
   }
 }
 
-function nextActiveIndex(room, fromIndex) {
-  for (let i = fromIndex + 1; i < room.players.length; i += 1) {
-    if (room.players[i].state === "ACTIVE") return i;
+function ensurePlayerHands(player) {
+  if (!Array.isArray(player.hands) || player.hands.length === 0) {
+    player.hands = [{
+      cards: Array.isArray(player.hand) ? player.hand : [],
+      bet: Number(player.bet) || 0,
+      state: player.state || "WAITING",
+      result: player.result || null,
+      chipChange: Number(player.chipChange) || 0,
+      doubled: false,
+      split: false
+    }];
   }
-  return -1;
+  return player.hands;
+}
+
+function syncLegacyPlayerState(player, preferredHandIndex = 0) {
+  const hands = ensurePlayerHands(player);
+  const hand = hands[preferredHandIndex] || hands[0];
+  player.hand = hand?.cards || [];
+  player.state = hand?.state || "WAITING";
+}
+
+function activeHand(room, player) {
+  const hands = ensurePlayerHands(player);
+  const index = Number(room.turnHandIndex) || 0;
+  return { hand: hands[index] || null, index };
+}
+
+function nextActivePosition(room, fromPlayerIndex = -1, fromHandIndex = -1) {
+  for (let playerIndex = 0; playerIndex < room.players.length; playerIndex += 1) {
+    const player = room.players[playerIndex];
+    const hands = ensurePlayerHands(player);
+    for (let handIndex = 0; handIndex < hands.length; handIndex += 1) {
+      if (playerIndex < fromPlayerIndex) continue;
+      if (playerIndex === fromPlayerIndex && handIndex <= fromHandIndex) continue;
+      if (hands[handIndex].state === "ACTIVE") return { playerIndex, handIndex };
+    }
+  }
+  return null;
 }
 
 async function advanceTurn(room) {
   if (room.status !== "PLAYING") return;
-  const next = nextActiveIndex(room, room.turnIndex);
-  if (next >= 0) {
-    room.turnIndex = next;
+  const next = nextActivePosition(room, room.turnIndex, Number(room.turnHandIndex) || 0);
+  if (next) {
+    room.turnIndex = next.playerIndex;
+    room.turnHandIndex = next.handIndex;
+    syncLegacyPlayerState(room.players[room.turnIndex], room.turnHandIndex);
     await emitRoom(room);
     return;
   }
   room.turnIndex = -1;
+  room.turnHandIndex = -1;
   await runDealer(room);
 }
 
-function evaluateResult(player, dealerHand) {
-  const playerScore = cardScore(player.hand);
+function canSplitHand(player, hand) {
+  if (!hand || hand.state !== "ACTIVE" || hand.cards?.length !== 2) return false;
+  if ((player.hands?.length || 0) !== 1) return false;
+  if (hand.doubled) return false;
+  return hand.cards[0]?.value === hand.cards[1]?.value && player.chips >= hand.bet;
+}
+
+function canDoubleHand(player, hand) {
+  if (!hand || hand.state !== "ACTIVE" || hand.cards?.length !== 2) return false;
+  if (hand.doubled) return false;
+  return player.chips >= hand.bet;
+}
+
+function evaluateHandResult(hand, dealerHand) {
+  const playerScore = cardScore(hand.cards);
   const dealerScore = cardScore(dealerHand);
-  const playerBJ = isBlackjack(player.hand);
+  const playerBJ = !hand.split && isBlackjack(hand.cards);
   const dealerBJ = isBlackjack(dealerHand);
 
   if (playerScore > 21) return "LOSE";
@@ -581,6 +784,14 @@ function evaluateResult(player, dealerHand) {
   if (playerScore > dealerScore) return "WIN";
   if (playerScore < dealerScore) return "LOSE";
   return "DRAW";
+}
+
+function aggregatePlayerResult(handResults, chipChange) {
+  if (handResults.length === 1) return handResults[0];
+  if (handResults.every((result) => result === handResults[0])) return handResults[0];
+  if (chipChange > 0) return "WIN";
+  if (chipChange < 0) return "LOSE";
+  return "MIXED";
 }
 
 function payoutFor(result, bet) {
@@ -594,42 +805,68 @@ async function finishRound(room) {
   const db = getDB();
   room.status = "RESULT";
   room.turnIndex = -1;
+  room.turnHandIndex = -1;
   const dealerScore = cardScore(room.dealerHand);
   const playerRecords = [];
 
   for (const player of room.players) {
-    const result = evaluateResult(player, room.dealerHand);
-    const payout = payoutFor(result, player.bet);
-    const chipChange = payout - player.bet;
+    const hands = ensurePlayerHands(player);
+    let totalPayout = 0;
+    let totalBet = 0;
+    let blackjackCount = 0;
+
+    const handRecords = hands.map((hand) => {
+      const result = evaluateHandResult(hand, room.dealerHand);
+      const payout = payoutFor(result, hand.bet);
+      const chipChange = payout - hand.bet;
+      hand.result = result;
+      hand.chipChange = chipChange;
+      hand.state = "FINISHED";
+      totalPayout += payout;
+      totalBet += hand.bet;
+      if (result === "BLACKJACK") blackjackCount += 1;
+      return {
+        cards: hand.cards.map(compactCard),
+        score: cardScore(hand.cards),
+        bet: hand.bet,
+        result,
+        chipChange,
+        doubled: Boolean(hand.doubled),
+        split: Boolean(hand.split)
+      };
+    });
+
+    const chipChange = totalPayout - totalBet;
+    const result = aggregatePlayerResult(handRecords.map((hand) => hand.result), chipChange);
     player.result = result;
     player.chipChange = chipChange;
     player.state = "FINISHED";
-    player.chips += payout;
+    player.chips += totalPayout;
+    syncLegacyPlayerState(player, 0);
 
     const inc = {
-      chips: payout,
+      chips: totalPayout,
       "stats.games": 1
     };
     const update = { $inc: inc };
 
-    if (result === "WIN" || result === "BLACKJACK") {
+    if (chipChange > 0) {
       inc["stats.wins"] = 1;
       inc["stats.currentWinStreak"] = 1;
-      if (result === "BLACKJACK") inc["stats.blackjacks"] = 1;
-    } else if (result === "DRAW") {
+    } else if (chipChange === 0) {
       inc["stats.draws"] = 1;
       update.$set = { "stats.currentWinStreak": 0 };
     } else {
       inc["stats.losses"] = 1;
       update.$set = { "stats.currentWinStreak": 0 };
     }
+    if (blackjackCount) inc["stats.blackjacks"] = blackjackCount;
 
     await db.collection("users").updateOne(
       { _id: new ObjectId(player.userId) },
       update
     );
 
-    // 최고 연승은 현재 값을 다시 읽어 안전하게 갱신한다.
     const updated = await db.collection("users").findOne(
       { _id: new ObjectId(player.userId) },
       { projection: { stats: 1 } }
@@ -646,11 +883,13 @@ async function finishRound(room) {
     playerRecords.push({
       userId: player.userId,
       nickname: player.nickname,
-      cards: player.hand.map(compactCard),
-      score: cardScore(player.hand),
-      bet: player.bet,
+      cards: handRecords[0]?.cards || [],
+      score: handRecords[0]?.score ?? null,
+      scores: handRecords.map((hand) => hand.score),
+      bet: totalBet,
       result,
-      chipChange
+      chipChange,
+      hands: handRecords
     });
   }
 
@@ -673,6 +912,7 @@ async function runDealer(room) {
   room.dealerRunning = true;
   room.status = "DEALER_TURN";
   room.turnIndex = -1;
+  room.turnHandIndex = -1;
   await emitRoom(room);
 
   try {
@@ -695,7 +935,7 @@ async function runDealer(room) {
 
 async function startRound(room) {
   if (room.status !== "WAITING") throw new Error("현재 게임을 시작할 수 없습니다.");
-  if (room.players.length < 2) throw new Error("최소 2명의 플레이어가 필요합니다.");
+  if (room.players.length < 1) throw new Error("플레이어가 필요합니다.");
   if (room.players.some((p) => !p.ready)) throw new Error("모든 플레이어가 READY 상태여야 합니다.");
   if (room.players.some((p) => p.bet < room.minBet)) throw new Error("최소 배팅 금액을 확인하세요.");
 
@@ -715,30 +955,49 @@ async function startRound(room) {
     room.dealerHand = [];
     room.dealerRunning = false;
     room.status = "PLAYING";
+    room.turnHandIndex = -1;
 
     for (const player of room.players) {
-      player.hand = [cards[cursor++], cards[cursor++]];
+      const initialCards = [cards[cursor++], cards[cursor++]];
+      const initialState = isBlackjack(initialCards) ? "STAND" : "ACTIVE";
+      player.hands = [{
+        cards: initialCards,
+        bet: player.bet,
+        state: initialState,
+        result: null,
+        chipChange: 0,
+        doubled: false,
+        split: false
+      }];
       player.result = null;
       player.chipChange = 0;
-      player.state = isBlackjack(player.hand) ? "STAND" : "ACTIVE";
+      player.hand = initialCards;
+      player.state = initialState;
     }
 
     room.dealerHand = [cards[cursor++], cards[cursor++]];
-    room.turnIndex = nextActiveIndex(room, -1);
+    const firstTurn = nextActivePosition(room, -1, -1);
+    room.turnIndex = firstTurn ? firstTurn.playerIndex : -1;
+    room.turnHandIndex = firstTurn ? firstTurn.handIndex : -1;
+    if (firstTurn) syncLegacyPlayerState(room.players[firstTurn.playerIndex], firstTurn.handIndex);
     await emitRoom(room);
     await emitRoomList();
 
-    if (room.turnIndex < 0) await runDealer(room);
+    if (!firstTurn) await runDealer(room);
   } catch (error) {
     await refundBets(room);
     room.status = "WAITING";
     room.deckId = null;
     room.dealerHand = [];
     room.turnIndex = -1;
+    room.turnHandIndex = -1;
     room.players.forEach((p) => {
       p.hand = [];
+      p.hands = [];
       p.state = "WAITING";
       p.ready = false;
+      p.result = null;
+      p.chipChange = 0;
     });
     await emitRoom(room);
     throw error;
@@ -901,7 +1160,7 @@ io.on("connection", (socket) => {
       if (!freshUser) throw new Error("사용자를 찾을 수 없습니다.");
 
       const code = await randomRoomCode();
-      const maxPlayers = Math.min(4, Math.max(2, Number(payload.maxPlayers) || 4));
+      const maxPlayers = Math.min(4, Math.max(1, Number(payload.maxPlayers) || 4));
       const minBet = normalizeBet(payload.minBet || 10);
       const name = String(payload.name || `${socket.user.nickname}의 방`).trim().slice(0, 24) || "고양이 블랙잭 방";
 
@@ -915,6 +1174,7 @@ io.on("connection", (socket) => {
         deckId: null,
         dealerHand: [],
         turnIndex: -1,
+        turnHandIndex: -1,
         dealerRunning: false,
         messages: [],
         revision: 0,
@@ -927,6 +1187,7 @@ io.on("connection", (socket) => {
           bet: Math.min(minBet, freshUser.chips),
           ready: false,
           hand: [],
+          hands: [],
           state: "WAITING",
           result: null,
           chipChange: 0
@@ -997,6 +1258,7 @@ io.on("connection", (socket) => {
           bet: Math.min(room.minBet, freshUser.chips),
           ready: false,
           hand: [],
+          hands: [],
           state: "WAITING",
           result: null,
           chipChange: 0
@@ -1099,21 +1361,124 @@ io.on("connection", (socket) => {
         if (!room || room.status !== "PLAYING") throw new Error("게임이 진행 중이 아닙니다.");
         const player = room.players[room.turnIndex];
         if (!player || player.userId !== socket.user.id) throw new Error("현재 당신의 차례가 아닙니다.");
-        if (player.state !== "ACTIVE") throw new Error("카드를 더 받을 수 없는 상태입니다.");
+        const { hand, index } = activeHand(room, player);
+        if (!hand || hand.state !== "ACTIVE") throw new Error("카드를 더 받을 수 없는 상태입니다.");
 
         const [card] = await drawCards(room.deckId, 1);
-        player.hand.push(card);
-        const score = cardScore(player.hand);
-        if (score > 21) {
-          player.state = "BUST";
+        hand.cards.push(card);
+        const score = cardScore(hand.cards);
+        if (score > 21) hand.state = "BUST";
+        else if (score === 21) hand.state = "STAND";
+        syncLegacyPlayerState(player, index);
+
+        await emitRoom(room);
+        if (hand.state !== "ACTIVE") await advanceTurn(room);
+      });
+      callback({ ok: true });
+    } catch (error) {
+      callback({ ok: false, error: error.message });
+    }
+  });
+
+  socket.on("player-double", async (_payload, callback = () => {}) => {
+    try {
+      const code = socket.data.roomCode || await findUserRoom(socket.user.id);
+      await withRoomLock(code, async () => {
+        const room = await loadRoom(code);
+        if (!room || room.status !== "PLAYING") throw new Error("게임이 진행 중이 아닙니다.");
+        const player = room.players[room.turnIndex];
+        if (!player || player.userId !== socket.user.id) throw new Error("현재 당신의 차례가 아닙니다.");
+        const { hand, index } = activeHand(room, player);
+        if (!canDoubleHand(player, hand)) throw new Error("현재 핸드에서는 DOUBLE DOWN을 할 수 없습니다.");
+
+        const extraBet = hand.bet;
+        const db = getDB();
+        const deducted = await db.collection("users").updateOne(
+          { _id: new ObjectId(player.userId), chips: { $gte: extraBet } },
+          { $inc: { chips: -extraBet } }
+        );
+        if (deducted.modifiedCount !== 1) throw new Error("DOUBLE DOWN에 필요한 CHIP이 부족합니다.");
+
+        player.chips -= extraBet;
+        hand.bet += extraBet;
+        hand.doubled = true;
+        try {
+          const [card] = await drawCards(room.deckId, 1);
+          hand.cards.push(card);
+          hand.state = cardScore(hand.cards) > 21 ? "BUST" : "STAND";
+          syncLegacyPlayerState(player, index);
           await emitRoom(room);
           await advanceTurn(room);
-        } else if (score === 21) {
-          player.state = "STAND";
+        } catch (error) {
+          await db.collection("users").updateOne(
+            { _id: new ObjectId(player.userId) },
+            { $inc: { chips: extraBet } }
+          );
+          player.chips += extraBet;
+          hand.bet -= extraBet;
+          hand.doubled = false;
+          throw error;
+        }
+      });
+      callback({ ok: true });
+    } catch (error) {
+      callback({ ok: false, error: error.message });
+    }
+  });
+
+  socket.on("player-split", async (_payload, callback = () => {}) => {
+    try {
+      const code = socket.data.roomCode || await findUserRoom(socket.user.id);
+      await withRoomLock(code, async () => {
+        const room = await loadRoom(code);
+        if (!room || room.status !== "PLAYING") throw new Error("게임이 진행 중이 아닙니다.");
+        const player = room.players[room.turnIndex];
+        if (!player || player.userId !== socket.user.id) throw new Error("현재 당신의 차례가 아닙니다.");
+        const { hand } = activeHand(room, player);
+        if (!canSplitHand(player, hand)) throw new Error("같은 숫자 카드 2장과 추가 배팅 CHIP이 있어야 SPLIT할 수 있습니다.");
+
+        const extraBet = hand.bet;
+        const db = getDB();
+        const deducted = await db.collection("users").updateOne(
+          { _id: new ObjectId(player.userId), chips: { $gte: extraBet } },
+          { $inc: { chips: -extraBet } }
+        );
+        if (deducted.modifiedCount !== 1) throw new Error("SPLIT에 필요한 CHIP이 부족합니다.");
+
+        player.chips -= extraBet;
+        try {
+          const [firstDraw, secondDraw] = await drawCards(room.deckId, 2);
+          const firstCard = hand.cards[0];
+          const secondCard = hand.cards[1];
+          const splitAces = firstCard.value === "ACE";
+          const makeSplitHand = (card, draw) => {
+            const cards = [card, draw];
+            return {
+              cards,
+              bet: extraBet,
+              state: splitAces || cardScore(cards) === 21 ? "STAND" : "ACTIVE",
+              result: null,
+              chipChange: 0,
+              doubled: false,
+              split: true
+            };
+          };
+
+          player.hands = [
+            makeSplitHand(firstCard, firstDraw),
+            makeSplitHand(secondCard, secondDraw)
+          ];
+          room.turnHandIndex = 0;
+          syncLegacyPlayerState(player, 0);
           await emitRoom(room);
-          await advanceTurn(room);
-        } else {
-          await emitRoom(room);
+          if (player.hands[0].state !== "ACTIVE") await advanceTurn(room);
+        } catch (error) {
+          await db.collection("users").updateOne(
+            { _id: new ObjectId(player.userId) },
+            { $inc: { chips: extraBet } }
+          );
+          player.chips += extraBet;
+          throw error;
         }
       });
       callback({ ok: true });
@@ -1130,8 +1495,10 @@ io.on("connection", (socket) => {
         if (!room || room.status !== "PLAYING") throw new Error("게임이 진행 중이 아닙니다.");
         const player = room.players[room.turnIndex];
         if (!player || player.userId !== socket.user.id) throw new Error("현재 당신의 차례가 아닙니다.");
-        if (player.state !== "ACTIVE") throw new Error("이미 턴 처리가 끝난 상태입니다.");
-        player.state = "STAND";
+        const { hand, index } = activeHand(room, player);
+        if (!hand || hand.state !== "ACTIVE") throw new Error("이미 턴 처리가 끝난 상태입니다.");
+        hand.state = "STAND";
+        syncLegacyPlayerState(player, index);
         await emitRoom(room);
         await advanceTurn(room);
       });
@@ -1154,11 +1521,13 @@ io.on("connection", (socket) => {
         room.deckId = null;
         room.dealerHand = [];
         room.turnIndex = -1;
+        room.turnHandIndex = -1;
         room.dealerRunning = false;
         room.players.forEach((p) => {
           p.bet = p.chips >= room.minBet ? room.minBet : 0;
           p.ready = false;
           p.hand = [];
+          p.hands = [];
           p.state = "WAITING";
           p.result = null;
           p.chipChange = 0;
@@ -1237,11 +1606,21 @@ io.on("connection", (socket) => {
             return;
           }
 
-          if (latestRoom.status === "PLAYING" && latestPlayer.state === "ACTIVE") {
-            latestPlayer.state = "STAND";
+          if (latestRoom.status === "PLAYING") {
+            const hands = ensurePlayerHands(latestPlayer);
             const wasCurrent = latestRoom.players[latestRoom.turnIndex]?.userId === socket.user.id;
-            await emitRoom(latestRoom);
-            if (wasCurrent) await advanceTurn(latestRoom);
+            let changed = false;
+            for (const hand of hands) {
+              if (hand.state === "ACTIVE") {
+                hand.state = "STAND";
+                changed = true;
+              }
+            }
+            if (changed) {
+              syncLegacyPlayerState(latestPlayer, Math.max(0, Number(latestRoom.turnHandIndex) || 0));
+              await emitRoom(latestRoom);
+              if (wasCurrent) await advanceTurn(latestRoom);
+            }
           }
         });
 

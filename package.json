@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
-    "check": "node --check server.js && node --check src/db.js && node --check src/auth.js && node --check public/script.js",
+    "check": "node --check server.js && node --check src/db.js && node --check src/auth.js && node --check src/chipRewards.js && node --check public/script.js",
     "vercel-dev": "vercel dev",
     "setup-db": "node scripts/setup-db.js"
   },

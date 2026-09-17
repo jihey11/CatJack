@@ -206,10 +206,20 @@ main { max-width: 1320px; margin: auto; padding: 30px 24px 64px; }
 .bet-input-wrap input { width: 120px; border: 0; background: transparent; }
 .ready-button { background: var(--surface-3); color: var(--text); border: 1px solid var(--line); }
 .ready-button.on { background: var(--green); color: #102018; }
-.playing-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.playing-controls { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
 .action-button { padding: 18px; font-size: 17px; }
 .action-button.hit { background: var(--accent); color: #201b0c; }
 .action-button.stand { background: var(--surface-3); color: var(--text); border: 1px solid var(--line); }
+.action-button.double { background: rgba(105,157,255,.14); color: #b9d0ff; border: 1px solid rgba(105,157,255,.28); }
+.action-button.split { background: rgba(196,141,255,.12); color: #d8bbff; border: 1px solid rgba(196,141,255,.26); }
+.action-button:disabled { opacity: .38; cursor: not-allowed; }
+.player-hands { display: grid; gap: 10px; }
+.player-hand { border-radius: 14px; padding: 10px; border: 1px solid rgba(255,255,255,.055); background: rgba(0,0,0,.08); }
+.player-hand.active-hand { border-color: rgba(242,200,91,.6); background: rgba(242,200,91,.055); }
+.hand-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
+.hand-label { color: var(--muted); font-size: 10px; font-weight: 900; letter-spacing: .08em; }
+.hand-meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 10px; color: var(--muted); }
+.hand-meta strong { color: var(--text); font-size: 16px; }
 .result-controls { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .result-summary { font-weight: 900; }
 
@@ -260,7 +270,8 @@ main { max-width: 1320px; margin: auto; padding: 30px 24px 64px; }
   .room-header { flex-direction: column; }
   .waiting-controls, .result-controls { align-items: stretch; flex-direction: column; }
   .bet-control { min-width: 0; flex-wrap: wrap; }
-  .playing-controls { grid-template-columns: 1fr; }
+  .playing-controls { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .hand-header { align-items: flex-start; flex-direction: column; }
   .cat-token { width: 100px; height: 130px; }
   .cat-token.small-cat { width: 82px; height: 106px; }
   .stat-grid { grid-template-columns: repeat(2,1fr); }
@@ -374,4 +385,69 @@ main { max-width: 1320px; margin: auto; padding: 30px 24px 64px; }
     height: 64px !important;
     flex: 0 0 64px !important;
   }
+}
+
+/* =========================================================
+   CHIP 보상 / 복구 시스템
+   ========================================================= */
+.reward-button {
+  border: 1px solid rgba(242,200,91,.30);
+  border-radius: 12px;
+  padding: 9px 12px;
+  background: rgba(242,200,91,.12);
+  color: var(--accent-2);
+  font-weight: 900;
+  transition: .18s ease;
+}
+.reward-button:hover { background: rgba(242,200,91,.20); transform: translateY(-1px); }
+.reward-balance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  margin-bottom: 14px;
+  border: 1px solid rgba(242,200,91,.22);
+  border-radius: 16px;
+  background: rgba(242,200,91,.07);
+}
+.reward-balance span { color: var(--muted); font-size: 13px; font-weight: 800; }
+.reward-balance strong { color: var(--accent-2); font-size: 20px; }
+.reward-notice {
+  margin-bottom: 14px;
+  padding: 11px 13px;
+  border: 1px solid rgba(255,129,120,.24);
+  border-radius: 12px;
+  color: #ffc2bd;
+  background: rgba(255,129,120,.06);
+  font-size: 13px;
+  font-weight: 800;
+}
+.reward-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.reward-card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  background: rgba(255,255,255,.025);
+}
+.reward-icon { font-size: 34px; margin-bottom: 10px; }
+.reward-copy { flex: 1; }
+.reward-kicker {
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: .14em;
+}
+.reward-copy h4 { margin: 5px 0 10px; font-size: 18px; }
+.reward-copy strong { display: block; margin-bottom: 7px; color: var(--accent-2); font-size: 17px; }
+.reward-copy p { min-height: 42px; margin: 0 0 10px; color: var(--muted); font-size: 12px; line-height: 1.55; }
+.reward-copy small { display: block; margin-bottom: 16px; color: var(--green); font-weight: 800; }
+
+@media (max-width: 680px) {
+  .reward-grid { grid-template-columns: 1fr; }
+  .reward-copy p { min-height: 0; }
+  .reward-button { padding: 8px 10px; }
 }

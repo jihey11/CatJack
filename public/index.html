@@ -18,6 +18,7 @@
       <div class="feature-row">
         <span>🐾 2~4인</span>
         <span>⚡ 실시간</span>
+        <span>🪙 가상 CHIP</span>
       </div>
     </div>
 
@@ -57,6 +58,7 @@
       <button id="logoButton" class="logo" type="button">🐾 CAT<span>JACK</span></button>
       <div class="top-actions">
         <div class="chip-pill">🪙 <strong id="headerChips">0</strong> CHIP</div>
+        <button id="chipRewardButton" class="reward-button small" type="button">🎁 CHIP 받기</button>
         <button id="rankingButton" class="ghost small" type="button">랭킹</button>
         <button id="historyButton" class="ghost small" type="button">기록</button>
         <button id="logoutButton" class="ghost small danger-text" type="button">로그아웃</button>
@@ -90,6 +92,7 @@
               <div class="two-cols">
                 <label>최대 인원
                   <select id="maxPlayers">
+                    <option value="1">1명 (혼자)</option>
                     <option value="2">2명</option>
                     <option value="3">3명</option>
                     <option value="4" selected>4명</option>
@@ -174,6 +177,8 @@
               <div id="playingControls" class="playing-controls hidden">
                 <button id="hitButton" class="action-button hit" type="button">🐾 HIT</button>
                 <button id="standButton" class="action-button stand" type="button">😼 STAND</button>
+                <button id="doubleButton" class="action-button double" type="button">2× DOUBLE</button>
+                <button id="splitButton" class="action-button split" type="button">✂ SPLIT</button>
               </div>
 
               <div id="resultControls" class="result-controls hidden">

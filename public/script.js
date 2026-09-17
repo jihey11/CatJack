@@ -6,14 +6,14 @@ const els = {
   loginUsername: $("#loginUsername"), loginPassword: $("#loginPassword"),
   signupUsername: $("#signupUsername"), signupNickname: $("#signupNickname"), signupPassword: $("#signupPassword"),
   headerChips: $("#headerChips"), welcomeNickname: $("#welcomeNickname"), logoutButton: $("#logoutButton"),
-  logoButton: $("#logoButton"), rankingButton: $("#rankingButton"), historyButton: $("#historyButton"),
+  logoButton: $("#logoButton"), chipRewardButton: $("#chipRewardButton"), rankingButton: $("#rankingButton"), historyButton: $("#historyButton"),
   createRoomForm: $("#createRoomForm"), roomName: $("#roomName"), maxPlayers: $("#maxPlayers"), minBet: $("#minBet"),
   roomCodeInput: $("#roomCodeInput"), joinCodeButton: $("#joinCodeButton"), quickJoinButton: $("#quickJoinButton"), roomList: $("#roomList"),
   roomStatusBadge: $("#roomStatusBadge"), roomCodeBadge: $("#roomCodeBadge"), roomTitle: $("#roomTitle"), roomSubtext: $("#roomSubtext"),
   copyCodeButton: $("#copyCodeButton"), leaveRoomButton: $("#leaveRoomButton"), dealerScore: $("#dealerScore"), dealerCats: $("#dealerCats"),
   turnBanner: $("#turnBanner"), playersGrid: $("#playersGrid"), waitingControls: $("#waitingControls"), playingControls: $("#playingControls"),
   resultControls: $("#resultControls"), betInput: $("#betInput"), setBetButton: $("#setBetButton"), readyButton: $("#readyButton"),
-  startButton: $("#startButton"), hitButton: $("#hitButton"), standButton: $("#standButton"), resultSummary: $("#resultSummary"),
+  startButton: $("#startButton"), hitButton: $("#hitButton"), standButton: $("#standButton"), doubleButton: $("#doubleButton"), splitButton: $("#splitButton"), resultSummary: $("#resultSummary"),
   nextRoundButton: $("#nextRoundButton"), chatMessages: $("#chatMessages"), chatForm: $("#chatForm"), chatInput: $("#chatInput"),
   modal: $("#modal"), modalTitle: $("#modalTitle"), modalBody: $("#modalBody"), modalClose: $("#modalClose"), toast: $("#toast")
 };
@@ -365,13 +365,13 @@ function catHtml(card, small = false) {
 }
 
 function resultLabel(result) {
-  return ({ WIN: "WIN", LOSE: "LOSE", DRAW: "DRAW", BLACKJACK: "BLACKJACK!" })[result] || "";
+  return ({ WIN: "WIN", LOSE: "LOSE", DRAW: "DRAW", BLACKJACK: "BLACKJACK!", MIXED: "MIXED" })[result] || "";
 }
 
 function resultClass(result) {
   if (["WIN", "BLACKJACK"].includes(result)) return "result-win";
   if (result === "LOSE") return "result-lose";
-  if (result === "DRAW") return "result-draw";
+  if (["DRAW", "MIXED"].includes(result)) return "result-draw";
   return "";
 }
 
@@ -380,7 +380,7 @@ function statusText(status) {
 }
 
 function roomSubtitle(room) {
-  if (room.status === "WAITING") return `최소 배팅 ${formatNumber(room.minBet)} CHIP · 최대 ${room.maxPlayers}명`;
+  if (room.status === "WAITING") return `최소 배팅 ${formatNumber(room.minBet)} CHIP · 최대 ${room.maxPlayers}명 · 1인 플레이 가능`;
   if (room.status === "PLAYING") return "각자 딜러를 상대로 21에 가까운 점수를 만드세요.";
   if (room.status === "DEALER_TURN") return "모든 플레이어의 턴이 끝났습니다. 딜러가 진행합니다.";
   return "이번 판 결과가 확정되었습니다.";
@@ -420,14 +420,40 @@ function renderPlayers(room) {
   els.playersGrid.innerHTML = room.players.map((player) => {
     const isMe = player.userId === currentUser.id;
     const isCurrent = room.currentTurnUserId === player.userId;
-    const natural = player.cards?.length === 2 && player.score === 21 && !player.result;
+    const hands = Array.isArray(player.hands) && player.hands.length
+      ? player.hands
+      : [{ cards: player.cards || [], score: player.score, bet: player.bet, state: player.state, result: player.result, chipChange: player.chipChange }];
+    const natural = hands.length === 1 && hands[0].cards?.length === 2 && hands[0].score === 21 && !player.result;
     const stateLabel = player.result
       ? `<span class="mini-pill ${resultClass(player.result)}">${resultLabel(player.result)} ${player.chipChange >= 0 ? "+" : ""}${formatNumber(player.chipChange)}</span>`
       : player.ready && room.status === "WAITING"
         ? `<span class="mini-pill ready-pill">READY</span>`
         : natural
           ? `<span class="mini-pill result-win">BLACKJACK</span>`
-          : `<span class="mini-pill">${escapeHtml(player.state || "WAITING")}</span>`;
+          : hands.length > 1
+            ? `<span class="mini-pill">${hands.length} HANDS</span>`
+            : `<span class="mini-pill">${escapeHtml(player.state || "WAITING")}</span>`;
+
+    const handHtml = hands.map((hand, handIndex) => {
+      const handResult = hand.result
+        ? `<span class="mini-pill ${resultClass(hand.result)}">${resultLabel(hand.result)} ${hand.chipChange >= 0 ? "+" : ""}${formatNumber(hand.chipChange)}</span>`
+        : `<span class="mini-pill">${escapeHtml(hand.state || "WAITING")}</span>`;
+      const flags = [hand.split ? "SPLIT" : "", hand.doubled ? "DOUBLE" : ""].filter(Boolean).join(" · ");
+      return `
+        <div class="player-hand ${hand.active ? "active-hand" : ""}">
+          <div class="hand-header">
+            <div class="hand-label">${hands.length > 1 ? `HAND ${handIndex + 1}` : "HAND"}${flags ? ` · ${flags}` : ""}</div>
+            <div class="hand-meta">
+              <span>BET ${formatNumber(hand.bet ?? player.bet)}</span>
+              <strong>${hand.score ?? "-"}</strong>
+              ${handResult}
+            </div>
+          </div>
+          <div class="player-cats">
+            ${hand.cards?.length ? hand.cards.map((card) => catHtml(card, true)).join("") : '<span class="empty-state" style="width:100%;padding:18px">아직 고양이가 없습니다.</span>'}
+          </div>
+        </div>`;
+    }).join("");
 
     return `
       <article class="player-card ${isMe ? "me" : ""} ${isCurrent ? "current" : ""}">
@@ -436,15 +462,12 @@ function renderPlayers(room) {
             <div class="player-name">${player.connected ? "🐱" : '<span class="offline-dot">●</span>'} ${escapeHtml(player.nickname)} ${isMe ? "(나)" : ""}</div>
             <div class="player-stats">
               <span class="mini-pill">🪙 ${formatNumber(player.chips)}</span>
-              <span class="mini-pill">BET ${formatNumber(player.bet)}</span>
+              <span class="mini-pill">TOTAL BET ${formatNumber(player.bet)}</span>
               ${stateLabel}
             </div>
           </div>
-          <strong>${player.score ?? "-"}</strong>
         </div>
-        <div class="player-cats">
-          ${player.cards?.length ? player.cards.map((card) => catHtml(card, true)).join("") : '<span class="empty-state" style="width:100%;padding:18px">아직 고양이가 없습니다.</span>'}
-        </div>
+        <div class="player-hands">${handHtml}</div>
       </article>`;
   }).join("");
 }
@@ -453,7 +476,9 @@ function renderTurn(room, me) {
   els.turnBanner.classList.remove("my-turn");
   if (room.status === "WAITING") {
     const ready = room.players.filter((p) => p.ready).length;
-    els.turnBanner.textContent = `${ready}/${room.players.length}명 READY · 최소 2명이 필요합니다.`;
+    els.turnBanner.textContent = room.players.length === 1
+      ? `${ready}/1명 READY · 혼자서도 시작할 수 있습니다.`
+      : `${ready}/${room.players.length}명 READY`;
     return;
   }
   if (room.status === "DEALER_TURN") {
@@ -466,13 +491,16 @@ function renderTurn(room, me) {
   }
 
   const current = room.players.find((p) => p.userId === room.currentTurnUserId);
+  const handNumber = (room.currentTurnHandIndex ?? 0) + 1;
+  const hasSplitHands = (current?.hands?.length || 0) > 1;
+  const handText = hasSplitHands ? ` ${handNumber}번째 핸드` : "";
   if (!current) {
     els.turnBanner.textContent = "다음 턴을 준비 중입니다.";
   } else if (current.userId === me.userId) {
-    els.turnBanner.textContent = "당신의 차례입니다! HIT 또는 STAND를 선택하세요.";
+    els.turnBanner.textContent = `당신의${handText} 차례입니다! HIT, STAND, DOUBLE, SPLIT 중 선택하세요.`;
     els.turnBanner.classList.add("my-turn");
   } else {
-    els.turnBanner.textContent = `${current.nickname}님의 차례입니다.`;
+    els.turnBanner.textContent = `${current.nickname}님의${handText} 차례입니다.`;
   }
 }
 
@@ -495,20 +523,31 @@ function renderControls(room, me) {
 
     const isHost = room.hostId === currentUser.id;
     els.startButton.classList.toggle("hidden", !isHost);
-    const allReady = room.players.length >= 2 && room.players.every((p) => p.ready);
+    const allReady = room.players.length >= 1 && room.players.every((p) => p.ready);
     els.startButton.disabled = !allReady;
+    els.startButton.textContent = room.players.length === 1 ? "혼자 게임 시작" : "게임 시작";
   }
 
   if (playing) {
     const myTurn = room.status === "PLAYING" && room.currentTurnUserId === currentUser.id && me.state === "ACTIVE";
     els.hitButton.disabled = !myTurn;
     els.standButton.disabled = !myTurn;
+    els.doubleButton.disabled = !myTurn || !me.canDouble;
+    els.splitButton.disabled = !myTurn || !me.canSplit;
+    els.doubleButton.title = me.canDouble ? "현재 배팅과 같은 금액을 추가하고 카드 1장만 받은 뒤 자동 STAND합니다." : "첫 2장일 때 추가 배팅 CHIP이 있어야 사용할 수 있습니다.";
+    els.splitButton.title = me.canSplit ? "같은 숫자 카드 2장을 두 핸드로 나눕니다." : "같은 숫자 카드 2장과 추가 배팅 CHIP이 있어야 사용할 수 있습니다.";
   }
 
   if (result) {
-    const label = resultLabel(me.result);
+    const hands = Array.isArray(me.hands) ? me.hands : [];
     const sign = me.chipChange > 0 ? "+" : "";
-    els.resultSummary.innerHTML = `<span class="${resultClass(me.result)}">${escapeHtml(label)}</span> · ${sign}${formatNumber(me.chipChange)} CHIP`;
+    if (hands.length > 1) {
+      const detail = hands.map((hand, index) => `HAND ${index + 1} ${resultLabel(hand.result)} (${hand.chipChange > 0 ? "+" : ""}${formatNumber(hand.chipChange)})`).join(" · ");
+      els.resultSummary.innerHTML = `${escapeHtml(detail)}<br><span class="${resultClass(me.result)}">TOTAL ${sign}${formatNumber(me.chipChange)} CHIP</span>`;
+    } else {
+      const label = resultLabel(me.result);
+      els.resultSummary.innerHTML = `<span class="${resultClass(me.result)}">${escapeHtml(label)}</span> · ${sign}${formatNumber(me.chipChange)} CHIP`;
+    }
     els.nextRoundButton.classList.toggle("hidden", room.hostId !== currentUser.id);
   }
 }
@@ -533,6 +572,104 @@ function openModal(title, html) {
 
 function closeModal() {
   els.modal.classList.add("hidden");
+}
+
+function rewardCountdownLabel(nextAvailableAt) {
+  if (!nextAvailableAt) return "지금 받을 수 있어요";
+  const remaining = new Date(nextAvailableAt).getTime() - Date.now();
+  if (remaining <= 0) return "지금 받을 수 있어요";
+
+  const totalMinutes = Math.ceil(remaining / 60000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) return `${hours}시간 ${minutes}분 후`;
+  return `${minutes}분 후`;
+}
+
+function renderChipRewardModal(rewards) {
+  const inRoom = Boolean(currentRoom);
+  const dailyDisabled = inRoom || !rewards.daily.available;
+  const recoveryDisabled = inRoom || !rewards.recovery.available;
+
+  let recoveryState = "";
+  if (!rewards.recovery.lowEnough) {
+    recoveryState = `보유 CHIP이 ${formatNumber(rewards.recovery.threshold)} 미만일 때 사용 가능`;
+  } else if (!rewards.recovery.cooldownReady) {
+    recoveryState = rewardCountdownLabel(rewards.recovery.nextAvailableAt);
+  } else {
+    recoveryState = "지금 복구할 수 있어요";
+  }
+
+  openModal("CHIP 보상", `
+    <div class="reward-balance">
+      <span>현재 보유 CHIP</span>
+      <strong>🪙 ${formatNumber(rewards.chips)}</strong>
+    </div>
+    ${inRoom ? '<div class="reward-notice">게임방을 나간 뒤 보상을 받을 수 있습니다.</div>' : ''}
+    <div class="reward-grid">
+      <section class="reward-card">
+        <div class="reward-icon">🎁</div>
+        <div class="reward-copy">
+          <span class="reward-kicker">DAILY BONUS</span>
+          <h4>일일 보상</h4>
+          <strong>+${formatNumber(rewards.daily.amount)} CHIP</strong>
+          <p>24시간마다 한 번 받을 수 있습니다.</p>
+          <small>${rewardCountdownLabel(rewards.daily.nextAvailableAt)}</small>
+        </div>
+        <button id="claimDailyReward" class="primary wide" type="button" ${dailyDisabled ? "disabled" : ""}>
+          ${rewards.daily.available ? "보상 받기" : "대기 중"}
+        </button>
+      </section>
+      <section class="reward-card">
+        <div class="reward-icon">🛟</div>
+        <div class="reward-copy">
+          <span class="reward-kicker">EMERGENCY</span>
+          <h4>긴급 CHIP 복구</h4>
+          <strong>${formatNumber(rewards.recovery.target)} CHIP까지 복구</strong>
+          <p>${formatNumber(rewards.recovery.threshold)} CHIP 미만일 때, 12시간마다 사용할 수 있습니다.</p>
+          <small>${escapeHtml(recoveryState)}</small>
+        </div>
+        <button id="claimRecoveryReward" class="secondary wide" type="button" ${recoveryDisabled ? "disabled" : ""}>
+          ${rewards.recovery.available ? "긴급 복구" : "사용 불가"}
+        </button>
+      </section>
+    </div>
+  `);
+
+  $("#claimDailyReward")?.addEventListener("click", () => claimChipReward("daily"));
+  $("#claimRecoveryReward")?.addEventListener("click", () => claimChipReward("recovery"));
+}
+
+async function showChipRewards() {
+  try {
+    const { rewards } = await api("/api/chip-rewards");
+    renderChipRewardModal(rewards);
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function claimChipReward(type) {
+  const dailyButton = $("#claimDailyReward");
+  const recoveryButton = $("#claimRecoveryReward");
+  if (dailyButton) dailyButton.disabled = true;
+  if (recoveryButton) recoveryButton.disabled = true;
+
+  try {
+    const data = await api(`/api/chip-rewards/${type}`, { method: "POST" });
+    currentUser = data.user;
+    els.headerChips.textContent = formatNumber(currentUser.chips);
+    showToast(data.message || "CHIP을 받았습니다.");
+    renderChipRewardModal(data.rewards);
+  } catch (error) {
+    showToast(error.message, true);
+    try {
+      const { rewards } = await api("/api/chip-rewards");
+      renderChipRewardModal(rewards);
+    } catch (_refreshError) {
+      closeModal();
+    }
+  }
 }
 
 async function showRanking() {
@@ -571,7 +708,7 @@ async function showHistory() {
             <td>${new Date(row.createdAt).toLocaleString("ko-KR", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
             <td>${escapeHtml(row.roomName)}</td>
             <td class="${resultClass(row.result)}">${escapeHtml(resultLabel(row.result))}</td>
-            <td>${row.score}</td><td>${row.dealerScore}</td>
+            <td>${Array.isArray(row.scores) && row.scores.length > 1 ? row.scores.join(" / ") : row.score}</td><td>${row.dealerScore}</td>
             <td>${row.chipChange > 0 ? "+" : ""}${formatNumber(row.chipChange)}</td>
           </tr>`).join("")}</tbody>
         </table>` : '<div class="empty-state">아직 게임 기록이 없습니다.</div>'}`);
@@ -668,6 +805,16 @@ els.hitButton.addEventListener("click", async () => {
   catch (error) { showToast(error.message, true); }
 });
 
+els.doubleButton.addEventListener("click", async () => {
+  try { await emitAck("player-double"); }
+  catch (error) { showToast(error.message, true); }
+});
+
+els.splitButton.addEventListener("click", async () => {
+  try { await emitAck("player-split"); }
+  catch (error) { showToast(error.message, true); }
+});
+
 els.standButton.addEventListener("click", async () => {
   try { await emitAck("player-stand"); }
   catch (error) { showToast(error.message, true); }
@@ -704,6 +851,7 @@ els.chatForm.addEventListener("submit", async (event) => {
   } catch (error) { showToast(error.message, true); }
 });
 
+els.chipRewardButton.addEventListener("click", showChipRewards);
 els.rankingButton.addEventListener("click", showRanking);
 els.historyButton.addEventListener("click", showHistory);
 els.logoutButton.addEventListener("click", logout);
