@@ -1707,3 +1707,50 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
     margin-top: 10px;
   }
 }
+
+
+/* ---- Keep chat height independent from player count ---- */
+.game-layout {
+  align-items: start;
+}
+
+.chat-panel {
+  align-self: start;
+  width: 100%;
+  height: 640px;
+  min-height: 0;
+  max-height: calc(100vh - 110px);
+  position: sticky;
+  top: 92px;
+  overflow: hidden;
+}
+
+.chat-messages {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.chat-form {
+  flex: 0 0 auto;
+}
+
+/* 태블릿/모바일에서는 채팅을 일반 영역으로 되돌리고 고정 높이만 사용 */
+@media (max-width: 980px) {
+  .chat-panel {
+    position: static;
+    top: auto;
+    height: 420px;
+    min-height: 0;
+    max-height: 420px;
+  }
+}
+
+@media (max-width: 680px) {
+  .chat-panel {
+    height: 360px;
+    max-height: 360px;
+  }
+}
