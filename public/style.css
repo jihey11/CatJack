@@ -928,3 +928,42 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
   .reward-copy p { min-height: 0; }
   .reward-button { padding: 8px 10px; }
 }
+
+
+/* ---------- Branding logo images ---------- */
+.brand-logo-image {
+  display: block;
+  width: min(100%, 560px);
+  max-width: 100%;
+  height: auto;
+  margin: 0 0 14px;
+  filter: drop-shadow(0 14px 24px rgba(77, 61, 48, 0.12));
+}
+
+.logo {
+  display: inline-flex;
+  align-items: center;
+  padding: 0;
+}
+
+.topbar-logo-image {
+  display: block;
+  height: 42px;
+  width: auto;
+  max-width: 270px;
+  object-fit: contain;
+}
+
+@media (max-width: 980px) {
+  .brand-logo-image {
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+
+@media (max-width: 680px) {
+  .topbar-logo-image {
+    height: 34px;
+    max-width: 210px;
+  }
+}
