@@ -2493,3 +2493,77 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
   -webkit-text-stroke: 0 !important;
   text-shadow: none !important;
 }
+
+
+/* ---------- Lobby final color contrast ---------- */
+.image-welcome-card .eyebrow,
+.image-create-panel .eyebrow,
+.image-roomlist-panel .eyebrow,
+.image-create-panel .panel-title .eyebrow,
+.image-roomlist-panel .panel-title .eyebrow {
+  color: #2f6657 !important;
+  font-weight: 950 !important;
+  text-shadow: 0 1px 1px rgba(255, 253, 247, .88) !important;
+}
+
+.image-welcome-card h2,
+.image-create-panel .panel-title h3,
+.image-roomlist-panel .panel-title h3 {
+  color: #2f2925 !important;
+  font-weight: 950 !important;
+  text-shadow:
+    0 1px 0 rgba(255, 253, 247, .92),
+    0 2px 4px rgba(61, 48, 38, .12) !important;
+}
+
+.image-welcome-card p:not(.eyebrow) {
+  color: #463c35 !important;
+  font-weight: 750 !important;
+  text-shadow: 0 1px 1px rgba(255, 253, 247, .86) !important;
+}
+
+.image-create-panel label,
+.image-create-panel .field-label,
+.image-create-panel .check-row span,
+.image-create-panel .divider span {
+  color: #3f4036 !important;
+  font-weight: 850 !important;
+  text-shadow: 0 1px 1px rgba(255, 253, 247, .82) !important;
+}
+
+.image-create-panel input,
+.image-create-panel select,
+.image-roomlist-panel input,
+.image-roomlist-panel select {
+  color: #342e29 !important;
+  font-weight: 750 !important;
+}
+
+.image-create-panel input::placeholder,
+.image-roomlist-panel input::placeholder {
+  color: #8a6652 !important;
+  opacity: 1 !important;
+  font-weight: 750 !important;
+}
+
+.image-roomlist-panel .empty-state,
+.image-roomlist-panel .room-item,
+.image-roomlist-panel .room-item * {
+  color: #443a33 !important;
+  text-shadow: 0 1px 1px rgba(255, 253, 247, .82) !important;
+}
+
+.image-roomlist-panel .room-item h4 {
+  color: #273b33 !important;
+  font-weight: 900 !important;
+}
+
+.image-roomlist-panel .room-item p {
+  color: #55483f !important;
+  font-weight: 700 !important;
+}
+
+.image-create-panel button,
+.image-roomlist-panel button {
+  font-weight: 900 !important;
+}
