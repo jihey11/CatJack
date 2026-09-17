@@ -1695,3 +1695,15 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
     gap: 5px;
   }
 }
+
+
+/* ---- More space between top frame and player nickname ---- */
+.player-card .player-head {
+  margin-top: 14px;
+}
+
+@media (max-width: 680px) {
+  .player-card .player-head {
+    margin-top: 10px;
+  }
+}
