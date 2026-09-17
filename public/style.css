@@ -1352,3 +1352,155 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
     padding-right: 9px;
   }
 }
+
+/* =========================================================
+   Royal table image skin
+   - dealer_table.png: dealer area
+   - player_table.png: each player area
+   ========================================================= */
+
+/* 딜러 테이블: 가로형 왕실 프레임 이미지 */
+.dealer-zone {
+  position: relative;
+  min-height: 0;
+  aspect-ratio: 3 / 1;
+  padding: clamp(44px, 5.2vw, 72px) clamp(54px, 7vw, 96px) clamp(40px, 4.8vw, 66px);
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background-color: transparent !important;
+  background-image: url('/images/tables/dealer_table.png') !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: 100% 100% !important;
+  overflow: visible;
+}
+
+.dealer-zone .zone-title {
+  position: relative;
+  z-index: 2;
+  color: #f8efd9;
+  text-shadow: 0 2px 5px rgba(22, 38, 32, .55);
+}
+
+.dealer-zone .zone-title strong {
+  color: #e9c77f;
+}
+
+.dealer-zone .cat-row {
+  position: relative;
+  z-index: 2;
+  min-height: 0;
+  height: calc(100% - 28px);
+  padding-top: 10px;
+}
+
+/* 사용자 테이블: 각 플레이어 영역에 세로형 왕실 프레임 적용 */
+.player-card {
+  position: relative;
+  min-height: 330px;
+  padding: 60px 48px 48px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none;
+  background-color: transparent !important;
+  background-image: url('/images/tables/player_table.png') !important;
+  background-repeat: no-repeat !important;
+  background-position: center !important;
+  background-size: 100% 100% !important;
+  overflow: visible;
+}
+
+.player-card.me {
+  background-color: transparent !important;
+}
+
+.player-card.current {
+  border: 0 !important;
+  box-shadow: 0 0 0 4px rgba(205, 168, 91, .26), 0 14px 30px rgba(53, 69, 60, .16) !important;
+  border-radius: 24px !important;
+}
+
+.player-card .player-name {
+  color: #f7edd8;
+  text-shadow: 0 2px 4px rgba(23, 38, 32, .55);
+}
+
+.player-card .player-stats {
+  color: #e8dcc4;
+}
+
+.player-card .mini-pill {
+  color: #4f4339;
+  background: rgba(248, 241, 228, .90);
+  border-color: rgba(198, 163, 93, .30);
+  text-shadow: none;
+}
+
+.player-card .ready-pill,
+.player-card .result-win {
+  color: #486659;
+}
+
+.player-card .result-lose {
+  color: #9f5f50;
+}
+
+.player-card .result-draw {
+  color: #6f8595;
+}
+
+.player-card .player-hand {
+  border: 1px solid rgba(228, 210, 174, .25);
+  background: rgba(244, 235, 217, .90);
+  box-shadow: 0 8px 20px rgba(26, 43, 36, .12);
+}
+
+.player-card .hand-label,
+.player-card .hand-meta {
+  color: #756759;
+}
+
+.player-card .hand-meta strong {
+  color: #372f29;
+}
+
+/* 빈 카드 안내 영역도 테이블 위에서 잘 보이도록 */
+.player-card .empty-state {
+  color: #756759;
+  background: rgba(246, 239, 227, .84);
+  border-color: rgba(110, 91, 72, .18);
+}
+
+/* 모바일에서는 프레임이 찌그러지지 않도록 테이블을 더 높게 표시 */
+@media (max-width: 680px) {
+  .dealer-zone {
+    aspect-ratio: auto;
+    min-height: 245px;
+    padding: 48px 38px 40px;
+    background-size: 100% 100% !important;
+  }
+
+  .dealer-zone .cat-row {
+    min-height: 125px;
+    height: auto;
+  }
+
+  .player-card {
+    min-height: 360px;
+    padding: 68px 48px 52px;
+    background-size: 100% 100% !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .dealer-zone {
+    min-height: 220px;
+    padding: 44px 30px 34px;
+  }
+
+  .player-card {
+    min-height: 330px;
+    padding: 60px 38px 44px;
+  }
+}
