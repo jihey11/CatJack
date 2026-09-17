@@ -2327,7 +2327,7 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
 
 /* Main hero text */
 .image-welcome-card .eyebrow {
-  color: #4d7a6d !important;
+  color: #55d4b0 !important;
   font-weight: 900 !important;
   -webkit-text-stroke: 0.4px rgba(255, 248, 239, 0.95);
   text-shadow:
@@ -2364,7 +2364,7 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
 /* Panel headers */
 .image-create-panel .panel-title .eyebrow,
 .image-roomlist-panel .panel-title .eyebrow {
-  color: #4d7a6d !important;
+  color: #55d4b0 !important;
   font-weight: 900 !important;
   -webkit-text-stroke: 0.35px rgba(255, 248, 239, 0.95);
   text-shadow:
@@ -2433,7 +2433,7 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
 .image-roomlist-panel .eyebrow,
 .image-create-panel .panel-title .eyebrow,
 .image-roomlist-panel .panel-title .eyebrow {
-  color: #527568 !important;
+  color: #55d4b0 !important;
   text-shadow: 0 1px 0 rgba(255, 250, 242, 0.9) !important;
 }
 
@@ -2481,7 +2481,7 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
 .image-roomlist-panel .eyebrow,
 .image-create-panel .panel-title .eyebrow,
 .image-roomlist-panel .panel-title .eyebrow {
-  color: #2f6657 !important;
+  color: #55d4b0 !important;
   font-weight: 950 !important;
   text-shadow: 0 1px 1px rgba(255, 253, 247, .88) !important;
 }
@@ -2562,7 +2562,7 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
 .image-roomlist-panel .eyebrow,
 .image-create-panel .panel-title .eyebrow,
 .image-roomlist-panel .panel-title .eyebrow {
-  color: #17624f !important;
+  color: #55d4b0 !important;
   font-weight: 1000 !important;
   text-shadow: 0 1px 0 rgba(255, 252, 246, .80) !important;
 }
