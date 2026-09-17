@@ -118,31 +118,74 @@ main { max-width: 1320px; margin: auto; padding: 30px 24px 64px; }
 .game-layout { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 20px; }
 .game-column { min-width: 0; }
 .game-surface { border-radius: 22px; padding: 20px; }
-.dealer-zone { min-height: 220px; background: radial-gradient(circle at center, rgba(107,214,158,.08), transparent 55%), rgba(18,36,29,.92); }
+.dealer-zone { min-height: 270px; background: radial-gradient(circle at center, rgba(107,214,158,.08), transparent 55%), rgba(18,36,29,.92); }
 .zone-title { display: flex; justify-content: center; gap: 10px; align-items: center; color: var(--muted); font-size: 12px; font-weight: 900; letter-spacing: .14em; }
 .zone-title strong { color: var(--accent); font-size: 15px; }
-.cat-row { min-height: 150px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; padding-top: 16px; }
+.cat-row { min-height: 190px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; padding-top: 16px; }
 
 .cat-token {
-  position: relative; width: 108px; height: 108px; border-radius: 50%;
-  display: grid; place-items: center; background: linear-gradient(145deg, #274d3f, #142c23);
-  border: 2px solid rgba(255,255,255,.09); box-shadow: 0 12px 30px rgba(0,0,0,.26);
+  position: relative;
+  width: 124px;
+  height: 158px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 16px;
+  padding: 7px;
+  background: linear-gradient(155deg, #fffdf5, #efe6d4);
+  border: 2px solid rgba(255,255,255,.16);
+  box-shadow: 0 12px 30px rgba(0,0,0,.28), inset 0 0 0 1px rgba(74,53,31,.10);
 }
-.cat-token .cat-face { font-size: 46px; line-height: 1; }
-.cat-token .cat-value { position: absolute; left: 9px; top: 8px; background: rgba(11,21,18,.82); border: 1px solid var(--line); border-radius: 8px; padding: 3px 6px; font-size: 12px; font-weight: 1000; }
-.cat-token .cat-accessory { position: absolute; right: 7px; top: 6px; font-size: 18px; }
-.cat-token .cat-suit { position: absolute; bottom: 6px; font-size: 16px; }
-.cat-token.hidden-cat { background: #172821; border-style: dashed; }
-.cat-token.hidden-cat .cat-face { opacity: .65; }
-.cat-token.small-cat { width: 74px; height: 74px; }
-.cat-token.small-cat .cat-face { font-size: 34px; }
-.cat-token.small-cat .cat-value { font-size: 10px; padding: 2px 5px; }
-.cat-token.small-cat .cat-accessory, .cat-token.small-cat .cat-suit { font-size: 13px; }
+.cat-card-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  filter: drop-shadow(0 4px 4px rgba(54,37,20,.14));
+}
+.cat-token.hidden-cat {
+  padding: 7px;
+  background: linear-gradient(145deg, #244c3d, #11271f);
+  border-color: rgba(242,200,91,.32);
+}
+.cat-card-back {
+  width: 100%;
+  height: 100%;
+  border-radius: 11px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+  color: var(--accent);
+  background:
+    radial-gradient(circle at 20% 20%, rgba(242,200,91,.12) 0 3px, transparent 4px),
+    radial-gradient(circle at 80% 80%, rgba(242,200,91,.12) 0 3px, transparent 4px),
+    linear-gradient(135deg, rgba(255,255,255,.035) 25%, transparent 25% 50%, rgba(255,255,255,.035) 50% 75%, transparent 75%),
+    #163428;
+  background-size: 26px 26px, 26px 26px, 18px 18px, auto;
+  border: 1px solid rgba(242,200,91,.28);
+  box-shadow: inset 0 0 0 4px rgba(9,24,18,.42);
+}
+.card-back-paw { font-size: 34px; line-height: 1; }
+.card-back-logo { font-size: 10px; font-weight: 1000; letter-spacing: .16em; }
+.cat-token.small-cat {
+  width: 90px;
+  height: 116px;
+  padding: 5px;
+  border-radius: 13px;
+}
+.cat-token.small-cat .cat-card-back { border-radius: 9px; }
+.cat-token.small-cat .card-back-paw { font-size: 26px; }
+.cat-token.small-cat .card-back-logo { font-size: 8px; }
 
 .turn-banner { margin: 12px 0; padding: 12px 16px; border-radius: 14px; text-align: center; color: var(--muted); background: rgba(255,255,255,.035); border: 1px solid var(--line); font-weight: 800; }
 .turn-banner.my-turn { color: #142219; background: var(--green); border-color: transparent; }
 .players-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
-.player-card { min-height: 190px; padding: 16px; border-radius: 18px; background: rgba(18,36,29,.92); border: 1px solid var(--line); transition: .2s; }
+.player-card { min-height: 235px; padding: 16px; border-radius: 18px; background: rgba(18,36,29,.92); border: 1px solid var(--line); transition: .2s; }
 .player-card.current { border-color: rgba(242,200,91,.7); box-shadow: 0 0 0 3px rgba(242,200,91,.08); }
 .player-card.me { background: rgba(32,61,50,.78); }
 .player-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
@@ -218,7 +261,117 @@ main { max-width: 1320px; margin: auto; padding: 30px 24px 64px; }
   .waiting-controls, .result-controls { align-items: stretch; flex-direction: column; }
   .bet-control { min-width: 0; flex-wrap: wrap; }
   .playing-controls { grid-template-columns: 1fr; }
-  .cat-token { width: 88px; height: 88px; }
-  .cat-token .cat-face { font-size: 39px; }
+  .cat-token { width: 100px; height: 130px; }
+  .cat-token.small-cat { width: 82px; height: 106px; }
   .stat-grid { grid-template-columns: repeat(2,1fr); }
+}
+
+/* =========================================================
+   카드 이미지 크기 수정
+   - 이 블록은 style.css 맨 아래에 둡니다.
+   - 기존 .cat-token 스타일보다 뒤에 있어야 우선 적용됩니다.
+   ========================================================= */
+
+/* 딜러 카드 영역 */
+.cat-row {
+  min-height: 130px;
+  gap: 10px;
+  padding-top: 12px;
+}
+
+/* 실제 카드 이미지가 들어가는 바깥 영역 */
+.cat-token {
+  width: 110px !important;
+  height: 110px !important;
+  flex: 0 0 110px !important;
+  padding: 3px !important;
+  border-radius: 14px !important;
+  overflow: hidden !important;
+
+  /* 이미지 자체 디자인만 보이도록 기존 초록 원/카드 배경 제거 */
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* 카드 PNG가 원본 해상도와 상관없이 반드시 슬롯 안에 들어오게 제한 */
+.cat-token > .cat-card-image,
+.cat-card-image {
+  display: block !important;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  object-position: center !important;
+  position: static !important;
+  transform: none !important;
+  margin: 0 !important;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+/* 플레이어가 가진 카드는 딜러 카드보다 작게 */
+.cat-token.small-cat {
+  width: 78px !important;
+  height: 78px !important;
+  flex: 0 0 78px !important;
+  padding: 2px !important;
+}
+
+/* 플레이어 카드 줄 */
+.player-cats {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+/* 숨겨진 딜러 카드는 기존 카드 뒷면 디자인 유지 */
+.cat-token.hidden-cat {
+  width: 110px !important;
+  height: 110px !important;
+  flex: 0 0 110px !important;
+  padding: 5px !important;
+  border-radius: 14px !important;
+  background: linear-gradient(145deg, #244c3d, #11271f) !important;
+  border: 1px solid rgba(242,200,91,.32) !important;
+  box-shadow: 0 8px 20px rgba(0,0,0,.18) !important;
+}
+
+.cat-token.hidden-cat.small-cat {
+  width: 78px !important;
+  height: 78px !important;
+  flex: 0 0 78px !important;
+}
+
+.cat-card-back {
+  width: 100%;
+  height: 100%;
+}
+
+/* 작은 화면 */
+@media (max-width: 680px) {
+  .cat-row {
+    min-height: 105px;
+    gap: 7px;
+  }
+
+  .cat-token,
+  .cat-token.hidden-cat {
+    width: 88px !important;
+    height: 88px !important;
+    flex: 0 0 88px !important;
+  }
+
+  .cat-token.small-cat,
+  .cat-token.hidden-cat.small-cat {
+    width: 64px !important;
+    height: 64px !important;
+    flex: 0 0 64px !important;
+  }
 }
