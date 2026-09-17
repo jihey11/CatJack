@@ -1504,3 +1504,91 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
     padding: 60px 38px 44px;
   }
 }
+
+
+/* ---- Player table readability fix ---- */
+.player-card .player-head,
+.player-card .player-hands,
+.player-card .player-cats {
+  position: relative;
+  z-index: 2;
+}
+
+.player-card .player-name {
+  color: #f8efdc;
+  font-size: 16px;
+  text-shadow: 0 2px 5px rgba(20, 34, 29, .58);
+}
+
+.player-card .player-stats {
+  color: #f1e5cb;
+  font-weight: 700;
+  text-shadow: 0 1px 3px rgba(20, 34, 29, .42);
+}
+
+.player-card .mini-pill {
+  color: #4c4036;
+  font-weight: 800;
+  background: rgba(249, 242, 229, .96);
+  border-color: rgba(188, 153, 87, .32);
+}
+
+.player-card .player-hand {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.player-card .player-hand.active-hand {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.player-card .hand-header {
+  margin-bottom: 6px;
+}
+
+.player-card .hand-label,
+.player-card .hand-meta {
+  color: #f4e8cf;
+  font-weight: 800;
+  text-shadow: 0 2px 4px rgba(20, 34, 29, .52);
+}
+
+.player-card .hand-meta strong {
+  color: #fff6e6;
+  font-size: 22px;
+  font-weight: 900;
+  text-shadow: 0 2px 5px rgba(20, 34, 29, .6);
+}
+
+.player-card .empty-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 82px;
+  padding: 12px 14px;
+  color: #f7ecd9;
+  font-weight: 700;
+  text-align: center;
+  background: transparent;
+  border: 0;
+  text-shadow: 0 2px 5px rgba(20, 34, 29, .55);
+}
+
+.player-card .player-cats {
+  min-height: 92px;
+}
+
+@media (max-width: 680px) {
+  .player-card .hand-meta strong {
+    font-size: 20px;
+  }
+
+  .player-card .empty-state {
+    min-height: 72px;
+    padding: 10px 8px;
+  }
+}
