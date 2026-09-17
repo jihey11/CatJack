@@ -25,8 +25,10 @@ let token = sessionStorage.getItem("catjack_token") || "";
 let currentUser = null;
 let socket = null;
 let currentRoom = null;
+let currentRoomRevision = -1;
 let availableRooms = [];
 let toastTimer = null;
+const pendingSocketEvents = new Set();
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -77,6 +79,7 @@ function clearStoredRooms() {
 
 function showLobby() {
   currentRoom = null;
+  currentRoomRevision = -1;
   sessionStorage.removeItem(roomStorageKey());
   els.roomView.classList.add("hidden");
   els.lobbyView.classList.remove("hidden");
@@ -99,6 +102,8 @@ function logout() {
   token = "";
   currentUser = null;
   currentRoom = null;
+  currentRoomRevision = -1;
+  pendingSocketEvents.clear();
   sessionStorage.removeItem("catjack_token");
   clearStoredRooms();
   if (socket) socket.disconnect();
@@ -183,6 +188,14 @@ function connectSocket() {
   });
 
   socket.on("room-state", (room) => {
+    const incomingRevision = Number(room?.revision) || 0;
+
+    // 재연결/네트워크 지연으로 이전 상태가 늦게 도착한 경우
+    // 현재 화면을 과거 상태로 되돌리지 않습니다.
+    if (currentRoom?.code === room?.code && incomingRevision < currentRoomRevision) return;
+    if (currentRoom?.code !== room?.code) currentRoomRevision = -1;
+
+    currentRoomRevision = incomingRevision;
     currentRoom = room;
     sessionStorage.setItem(roomStorageKey(), room.code);
     showRoom();
@@ -199,10 +212,36 @@ function formatNumber(value) {
 function emitAck(event, payload = {}) {
   return new Promise((resolve, reject) => {
     if (!socket?.connected) return reject(new Error("서버와 연결되어 있지 않습니다."));
-    socket.emit(event, payload, (result) => {
-      if (!result?.ok) return reject(new Error(result?.error || "요청에 실패했습니다."));
-      resolve(result);
-    });
+    if (pendingSocketEvents.has(event)) {
+      return reject(new Error("이 요청을 처리 중입니다. 잠시만 기다려 주세요."));
+    }
+
+    pendingSocketEvents.add(event);
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      pendingSocketEvents.delete(event);
+      reject(new Error("서버 응답이 지연되고 있습니다. 다시 시도해 주세요."));
+    }, 25000);
+
+    try {
+      socket.emit(event, payload, (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        pendingSocketEvents.delete(event);
+        if (!result?.ok) return reject(new Error(result?.error || "요청에 실패했습니다."));
+        resolve(result);
+      });
+    } catch (error) {
+      if (!settled) {
+        settled = true;
+        clearTimeout(timeoutId);
+        pendingSocketEvents.delete(event);
+      }
+      reject(error);
+    }
   });
 }
 
@@ -237,28 +276,67 @@ async function joinRoom(code) {
   }
 }
 
-const catFaces = {
-  ACE: "🐈‍⬛", "2": "🐱", "3": "😺", "4": "😸", "5": "😻", "6": "😼",
-  "7": "😽", "8": "🙀", "9": "😹", "10": "🐈", JACK: "😼", QUEEN: "😺", KING: "🐱"
+// 카드 API 값과 public/images/cards 안의 고양이 카드 이미지 파일명을 연결한다.
+// 이미지 파일명: sp_*, har_*, dia_*, clob_* (A, 2~10, J, Q, K)
+const cardSuitPrefixes = {
+  SPADES: "sp",
+  HEARTS: "har",
+  DIAMONDS: "dia",
+  CLUBS: "clob"
 };
-const valueLabels = { ACE: "A", JACK: "J", QUEEN: "Q", KING: "K" };
-const valueAccessories = { ACE: "🌙", JACK: "🎩", QUEEN: "🎀", KING: "👑" };
-const suitAccessories = { SPADES: "🖤", HEARTS: "💗", DIAMONDS: "💎", CLUBS: "🍀" };
+
+const cardValueFileNames = {
+  ACE: "A",
+  JACK: "J",
+  QUEEN: "Q",
+  KING: "K"
+};
+
+const cardValueLabels = {
+  ACE: "A",
+  JACK: "J",
+  QUEEN: "Q",
+  KING: "K"
+};
+
+const cardSuitLabels = {
+  SPADES: "스페이드",
+  HEARTS: "하트",
+  DIAMONDS: "다이아",
+  CLUBS: "클로버"
+};
+
+function cardImagePath(card) {
+  const suitPrefix = cardSuitPrefixes[card?.suit];
+  const valueFileName = cardValueFileNames[card?.value] || card?.value;
+  if (!suitPrefix || !valueFileName) return "";
+  return `/images/cards/${suitPrefix}_${valueFileName}.png`;
+}
 
 function catHtml(card, small = false) {
   if (!card || card.hidden) {
-    return `<div class="cat-token hidden-cat ${small ? "small-cat" : ""}"><span class="cat-face">🐾</span></div>`;
+    return `
+      <div class="cat-token hidden-cat ${small ? "small-cat" : ""}" title="숨겨진 카드" aria-label="숨겨진 카드">
+        <div class="cat-card-back" aria-hidden="true">
+          <span class="card-back-paw">🐾</span>
+          <span class="card-back-logo">CATJACK</span>
+        </div>
+      </div>`;
   }
-  const value = valueLabels[card.value] || card.value;
-  const face = catFaces[card.value] || "🐱";
-  const accessory = valueAccessories[card.value] || "";
-  const suit = suitAccessories[card.suit] || "🐾";
+
+  const imagePath = cardImagePath(card);
+  const valueLabel = cardValueLabels[card.value] || card.value;
+  const suitLabel = cardSuitLabels[card.suit] || card.suit;
+  const altText = `${suitLabel} ${valueLabel} 고양이 카드`;
+
   return `
-    <div class="cat-token ${small ? "small-cat" : ""}" title="${escapeHtml(card.value)} / ${escapeHtml(card.suit)}">
-      <span class="cat-value">${escapeHtml(value)}</span>
-      <span class="cat-accessory">${accessory}</span>
-      <span class="cat-face">${face}</span>
-      <span class="cat-suit">${suit}</span>
+    <div class="cat-token ${small ? "small-cat" : ""}" title="${escapeHtml(valueLabel)} / ${escapeHtml(suitLabel)}">
+      <img
+        class="cat-card-image"
+        src="${escapeHtml(imagePath)}"
+        alt="${escapeHtml(altText)}"
+        draggable="false"
+      >
     </div>`;
 }
 
