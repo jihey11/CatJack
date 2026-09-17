@@ -667,11 +667,14 @@ function renderControls(room, me, isSpectator = false) {
 function renderChat(room) {
   const nearBottom = els.chatMessages.scrollHeight - els.chatMessages.scrollTop - els.chatMessages.clientHeight < 80;
   els.chatMessages.innerHTML = room.messages?.length
-    ? room.messages.map((message) => `
-      <div class="chat-message ${message.userId === currentUser.id ? "mine" : ""}">
-        <strong>${escapeHtml(message.nickname)}${message.role === "SPECTATOR" ? ' <em class="chat-role">관전자</em>' : ""}</strong>
-        <span>${escapeHtml(message.text)}</span>
-      </div>`).join("")
+    ? room.messages.map((message) => {
+        const isMine = message.userId === currentUser.id;
+        return `
+          <div class="chat-message ${isMine ? "mine" : "other"}">
+            ${isMine ? "" : `<strong>${escapeHtml(message.nickname)}${message.role === "SPECTATOR" ? ' <em class="chat-role">관전자</em>' : ""}</strong>`}
+            <span>${escapeHtml(message.text)}</span>
+          </div>`;
+      }).join("")
     : `<div class="empty-state">첫 메시지를 보내보세요.</div>`;
   if (nearBottom) els.chatMessages.scrollTop = els.chatMessages.scrollHeight;
 }
