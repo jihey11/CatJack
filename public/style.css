@@ -2100,3 +2100,99 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
     border-radius: 0 !important;
   }
 }
+
+/* ---------- Home text readability fix ---------- */
+.image-welcome-card .welcome-copy {
+  background: rgba(255, 250, 243, 0.38);
+  border-radius: 18px;
+  padding: 12px 16px;
+  backdrop-filter: blur(2px);
+}
+
+.image-welcome-card .eyebrow,
+.image-create-panel .eyebrow,
+.image-roomlist-panel .eyebrow,
+.image-create-panel .panel-title .eyebrow,
+.image-roomlist-panel .panel-title .eyebrow {
+  color: #5e7d6f !important;
+  font-weight: 900 !important;
+  letter-spacing: 0.22em;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.55);
+}
+
+.image-welcome-card .welcome-copy h2,
+.image-create-panel .panel-title h3,
+.image-roomlist-panel .panel-title h3 {
+  color: #3c312a !important;
+  font-weight: 900 !important;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.62), 0 2px 6px rgba(60,49,42,0.08);
+}
+
+.image-welcome-card .welcome-copy p:not(.eyebrow),
+.image-create-panel .panel-title p,
+.image-roomlist-panel .panel-title p,
+.image-roomlist-panel .empty-state,
+.image-roomlist-panel .room-item,
+.image-roomlist-panel .room-item * {
+  color: #5a4d42 !important;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.48);
+}
+
+.image-create-panel label,
+.image-create-panel .field-label,
+.image-create-panel .check-row,
+.image-create-panel .divider,
+.image-roomlist-panel label,
+.image-roomlist-panel .field-label {
+  color: #5a4a3d !important;
+  font-weight: 800 !important;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.42);
+}
+
+.image-create-panel input,
+.image-create-panel select,
+.image-roomlist-panel input,
+.image-roomlist-panel select {
+  color: #4a3f37 !important;
+  font-weight: 700;
+}
+
+.image-create-panel input::placeholder,
+.image-roomlist-panel input::placeholder {
+  color: #b18d79 !important;
+  opacity: 1;
+  font-weight: 700;
+}
+
+.image-create-panel .primary,
+.image-create-panel .secondary,
+.image-create-panel .ghost,
+.image-roomlist-panel .secondary,
+.image-roomlist-panel .primary,
+.image-roomlist-panel .ghost {
+  color: #3d332d !important;
+  font-weight: 900 !important;
+  text-shadow: none !important;
+}
+
+.image-create-panel .primary {
+  color: #f8f3ec !important;
+  text-shadow: 0 1px 2px rgba(43, 59, 51, 0.28) !important;
+}
+
+.image-roomlist-panel .empty-state {
+  background: rgba(255, 250, 244, 0.72) !important;
+  border-color: rgba(169, 148, 120, 0.22) !important;
+  font-weight: 800;
+}
+
+.image-roomlist-panel .secondary.small {
+  background: rgba(255, 251, 245, 0.82) !important;
+  border-color: rgba(169, 148, 120, 0.22) !important;
+}
+
+@media (max-width: 680px) {
+  .image-welcome-card .welcome-copy {
+    padding: 10px 12px;
+  }
+}
