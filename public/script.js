@@ -477,7 +477,7 @@ function renderTurn(room, me) {
   if (room.status === "WAITING") {
     const ready = room.players.filter((p) => p.ready).length;
     els.turnBanner.textContent = room.players.length === 1
-      ? `${ready}/1명 READY · 혼자서도 시작할 수 있습니다.`
+      ? `${ready}/1명 READY`
       : `${ready}/${room.players.length}명 READY`;
     return;
   }
@@ -497,7 +497,7 @@ function renderTurn(room, me) {
   if (!current) {
     els.turnBanner.textContent = "다음 턴을 준비 중입니다.";
   } else if (current.userId === me.userId) {
-    els.turnBanner.textContent = `당신의${handText} 차례입니다! HIT, STAND, DOUBLE, SPLIT 중 선택하세요.`;
+    els.turnBanner.textContent = `당신의${handText} 차례입니다!`;
     els.turnBanner.classList.add("my-turn");
   } else {
     els.turnBanner.textContent = `${current.nickname}님의${handText} 차례입니다.`;
@@ -525,7 +525,7 @@ function renderControls(room, me) {
     els.startButton.classList.toggle("hidden", !isHost);
     const allReady = room.players.length >= 1 && room.players.every((p) => p.ready);
     els.startButton.disabled = !allReady;
-    els.startButton.textContent = room.players.length === 1 ? "혼자 게임 시작" : "게임 시작";
+    els.startButton.textContent = room.players.length === 1 ? "게임 시작" : "게임 시작";
   }
 
   if (playing) {
