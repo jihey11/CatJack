@@ -462,7 +462,7 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
   background:
     radial-gradient(circle at 50% 10%, rgba(255,255,255,.08), transparent 26%),
     radial-gradient(circle at 50% 52%, rgba(255,255,255,.035), transparent 28%),
-    linear-gradient(180deg, #4e6e63 0%, #355046 100%)
+    linear-gradient(180deg, #4e6e63 0%, #355046 100%);
   border-color: rgba(73, 116, 99, .35);
   box-shadow: 0 18px 36px rgba(49, 81, 69, .24);
 }
@@ -2439,4 +2439,57 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
   color: #b08a71 !important;
   opacity: 1;
   font-weight: 700;
+}
+
+/* ---------- Fix broken text outline rendering ---------- */
+.image-welcome-card *,
+.image-create-panel *,
+.image-roomlist-panel * {
+  -webkit-text-stroke: 0 !important;
+}
+
+.image-welcome-card .eyebrow,
+.image-create-panel .eyebrow,
+.image-roomlist-panel .eyebrow,
+.image-create-panel .panel-title .eyebrow,
+.image-roomlist-panel .panel-title .eyebrow {
+  color: #527568 !important;
+  text-shadow: 0 1px 0 rgba(255, 250, 242, 0.9) !important;
+}
+
+.image-welcome-card h2 {
+  color: #3b312b !important;
+  text-shadow:
+    0 1px 0 rgba(255, 250, 242, 0.98),
+    0 2px 3px rgba(60, 49, 42, 0.18) !important;
+}
+
+.image-create-panel .panel-title h3,
+.image-roomlist-panel .panel-title h3 {
+  color: #3d332c !important;
+  text-shadow:
+    0 1px 0 rgba(255, 250, 242, 0.96),
+    0 2px 3px rgba(60, 49, 42, 0.16) !important;
+}
+
+.image-welcome-card p:not(.eyebrow),
+.image-create-panel label,
+.image-create-panel .field-label,
+.image-create-panel .check-row span,
+.image-create-panel .divider span,
+.image-roomlist-panel .empty-state,
+.image-roomlist-panel .room-item,
+.image-roomlist-panel .room-item * {
+  color: #55483e !important;
+  text-shadow: 0 1px 1px rgba(255, 250, 242, 0.78) !important;
+}
+
+.image-create-panel input,
+.image-create-panel select,
+.image-roomlist-panel input,
+.image-roomlist-panel select,
+.image-create-panel button,
+.image-roomlist-panel button {
+  -webkit-text-stroke: 0 !important;
+  text-shadow: none !important;
 }
