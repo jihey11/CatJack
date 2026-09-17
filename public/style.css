@@ -451,3 +451,97 @@ main { max-width: 1320px; margin: auto; padding: 30px 24px 64px; }
   .reward-copy p { min-height: 0; }
   .reward-button { padding: 8px 10px; }
 }
+
+/* =========================================================
+   6순위: 친구방 / 비공개방 / 관전자 UI
+   ========================================================= */
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255,255,255,.02);
+  cursor: pointer;
+}
+.check-row input {
+  width: 17px;
+  height: 17px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.check-row span { font-size: 13px; }
+
+.code-join-expanded {
+  grid-template-columns: minmax(0, 1fr);
+}
+.code-join-actions,
+.room-actions {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+.code-join-actions > button { flex: 1 1 120px; }
+.room-actions { justify-content: flex-end; flex: 0 0 auto; }
+.room-list-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.room-list-heading h4 { margin: 0; }
+.status-badge.subtle {
+  background: rgba(255,255,255,.04);
+  border-color: var(--line);
+  color: var(--muted);
+}
+
+.spectator-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 14px;
+  margin-top: 12px;
+  border: 1px dashed rgba(255,255,255,.12);
+  border-radius: 14px;
+  background: rgba(255,255,255,.025);
+}
+.spectator-bar > div {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.spectator-bar strong { font-size: 12px; color: var(--accent); }
+.spectator-bar span { font-size: 12px; color: var(--muted); word-break: break-word; }
+.spectator-pill { color: var(--accent); }
+.chat-role {
+  display: inline-block;
+  margin-left: 5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-style: normal;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+
+@media (max-width: 700px) {
+  .room-item {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .room-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+  .room-actions button { flex: 1; }
+  .spectator-bar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

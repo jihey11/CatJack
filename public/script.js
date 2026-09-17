@@ -8,10 +8,11 @@ const els = {
   headerChips: $("#headerChips"), welcomeNickname: $("#welcomeNickname"), logoutButton: $("#logoutButton"),
   logoButton: $("#logoButton"), chipRewardButton: $("#chipRewardButton"), rankingButton: $("#rankingButton"), historyButton: $("#historyButton"),
   createRoomForm: $("#createRoomForm"), roomName: $("#roomName"), maxPlayers: $("#maxPlayers"), minBet: $("#minBet"),
-  roomCodeInput: $("#roomCodeInput"), joinCodeButton: $("#joinCodeButton"), quickJoinButton: $("#quickJoinButton"), roomList: $("#roomList"),
-  roomStatusBadge: $("#roomStatusBadge"), roomCodeBadge: $("#roomCodeBadge"), roomTitle: $("#roomTitle"), roomSubtext: $("#roomSubtext"),
+  roomPrivacy: $("#roomPrivacy"), roomPassword: $("#roomPassword"), roomPasswordLabel: $("#roomPasswordLabel"), allowSpectators: $("#allowSpectators"),
+  roomCodeInput: $("#roomCodeInput"), joinRoomPassword: $("#joinRoomPassword"), joinCodeButton: $("#joinCodeButton"), spectateCodeButton: $("#spectateCodeButton"), quickJoinButton: $("#quickJoinButton"), roomList: $("#roomList"),
+  roomStatusBadge: $("#roomStatusBadge"), roomPrivacyBadge: $("#roomPrivacyBadge"), roomCodeBadge: $("#roomCodeBadge"), roomTitle: $("#roomTitle"), roomSubtext: $("#roomSubtext"),
   copyCodeButton: $("#copyCodeButton"), leaveRoomButton: $("#leaveRoomButton"), dealerScore: $("#dealerScore"), dealerCats: $("#dealerCats"),
-  turnBanner: $("#turnBanner"), playersGrid: $("#playersGrid"), waitingControls: $("#waitingControls"), playingControls: $("#playingControls"),
+  turnBanner: $("#turnBanner"), playersGrid: $("#playersGrid"), spectatorBar: $("#spectatorBar"), waitingControls: $("#waitingControls"), playingControls: $("#playingControls"),
   resultControls: $("#resultControls"), betInput: $("#betInput"), setBetButton: $("#setBetButton"), readyButton: $("#readyButton"),
   startButton: $("#startButton"), hitButton: $("#hitButton"), standButton: $("#standButton"), doubleButton: $("#doubleButton"), splitButton: $("#splitButton"), resultSummary: $("#resultSummary"),
   nextRoundButton: $("#nextRoundButton"), chatMessages: $("#chatMessages"), chatForm: $("#chatForm"), chatInput: $("#chatInput"),
@@ -69,11 +70,15 @@ function roomStorageKey() {
   return currentUser?.id ? `catjack_room_${currentUser.id}` : "catjack_room";
 }
 
+function roomRoleStorageKey() {
+  return currentUser?.id ? `catjack_room_role_${currentUser.id}` : "catjack_room_role";
+}
+
 function clearStoredRooms() {
   const keys = [];
   for (let i = 0; i < sessionStorage.length; i += 1) {
     const key = sessionStorage.key(i);
-    if (key === "catjack_room" || key?.startsWith("catjack_room_")) keys.push(key);
+    if (key === "catjack_room" || key === "catjack_room_role" || key?.startsWith("catjack_room_") || key?.startsWith("catjack_room_role_")) keys.push(key);
   }
   keys.forEach((key) => sessionStorage.removeItem(key));
 }
@@ -82,6 +87,7 @@ function showLobby() {
   currentRoom = null;
   currentRoomRevision = -1;
   sessionStorage.removeItem(roomStorageKey());
+  sessionStorage.removeItem(roomRoleStorageKey());
   els.roomView.classList.add("hidden");
   els.lobbyView.classList.remove("hidden");
 }
@@ -154,10 +160,13 @@ function connectSocket() {
 
   socket.on("connect", () => {
     const savedRoom = sessionStorage.getItem(roomStorageKey());
+    const savedRole = sessionStorage.getItem(roomRoleStorageKey()) || "PLAYER";
     if (savedRoom) {
-      socket.emit("join-room", { code: savedRoom }, (result) => {
+      const eventName = savedRole === "SPECTATOR" ? "spectate-room" : "join-room";
+      socket.emit(eventName, { code: savedRoom }, (result) => {
         if (!result?.ok) {
           sessionStorage.removeItem(roomStorageKey());
+          sessionStorage.removeItem(roomRoleStorageKey());
           showLobby();
         }
       });
@@ -204,8 +213,17 @@ function connectSocket() {
     currentRoomRevision = incomingRevision;
     currentRoom = room;
     sessionStorage.setItem(roomStorageKey(), room.code);
+    const isPlayer = room.players?.some((player) => player.userId === currentUser?.id);
+    const isSpectator = room.spectators?.some((spectator) => spectator.userId === currentUser?.id);
+    if (isPlayer) sessionStorage.setItem(roomRoleStorageKey(), "PLAYER");
+    else if (isSpectator) sessionStorage.setItem(roomRoleStorageKey(), "SPECTATOR");
     showRoom();
     renderRoom();
+  });
+
+  socket.on("room-closed", ({ message } = {}) => {
+    showLobby();
+    showToast(message || "방이 종료되었습니다.", true);
   });
 
   socket.on("game-error", ({ message }) => showToast(message, true));
@@ -271,30 +289,58 @@ function emitAck(event, payload = {}, options = {}) {
 
 function renderRoomList() {
   if (!availableRooms.length) {
-    els.roomList.innerHTML = `<div class="empty-state">현재 참가 가능한 공개방이 없습니다.<br>새 방을 만들어 친구를 초대해 보세요.</div>`;
+    els.roomList.innerHTML = `<div class="empty-state">현재 공개방이 없습니다.<br>새 방을 만들어 친구를 초대해 보세요.</div>`;
     return;
   }
 
-  els.roomList.innerHTML = availableRooms.map((room) => `
-    <article class="room-item">
-      <div>
-        <h4>${escapeHtml(room.name)}</h4>
-        <p>${room.players}/${room.maxPlayers}명 · 최소 ${formatNumber(room.minBet)} CHIP · 코드 ${escapeHtml(room.code)}</p>
-      </div>
-      <button class="secondary small room-join" data-code="${escapeHtml(room.code)}" type="button">참가</button>
-    </article>
-  `).join("");
+  els.roomList.innerHTML = availableRooms.map((room) => {
+    const status = statusText(room.status);
+    const joinButton = room.canJoin
+      ? `<button class="secondary small room-join" data-code="${escapeHtml(room.code)}" type="button">참가</button>`
+      : "";
+    const spectateButton = room.canSpectate
+      ? `<button class="ghost small room-spectate" data-code="${escapeHtml(room.code)}" type="button">관전</button>`
+      : "";
+    const actionButtons = joinButton || spectateButton
+      ? `<div class="room-actions">${joinButton}${spectateButton}</div>`
+      : "";
+
+    return `
+      <article class="room-item">
+        <div>
+          <div class="room-list-heading">
+            <h4>${escapeHtml(room.name)}</h4>
+            <span class="mini-pill">${escapeHtml(status)}</span>
+          </div>
+          <p>${room.players}/${room.maxPlayers}명 · 관전자 ${room.spectators || 0}명 · 최소 ${formatNumber(room.minBet)} CHIP · 코드 ${escapeHtml(room.code)}</p>
+        </div>
+        ${actionButtons}
+      </article>`;
+  }).join("");
 
   document.querySelectorAll(".room-join").forEach((button) => {
     button.addEventListener("click", () => joinRoom(button.dataset.code));
   });
+  document.querySelectorAll(".room-spectate").forEach((button) => {
+    button.addEventListener("click", () => spectateRoom(button.dataset.code));
+  });
 }
 
-async function joinRoom(code) {
+async function joinRoom(code, password = "") {
   try {
     const normalized = String(code || "").trim().toUpperCase();
     if (!normalized) throw new Error("방 코드를 입력하세요.");
-    await emitAck("join-room", { code: normalized });
+    await emitAck("join-room", { code: normalized, password: String(password || "") });
+  } catch (error) {
+    showToast(error.message, true);
+  }
+}
+
+async function spectateRoom(code, password = "") {
+  try {
+    const normalized = String(code || "").trim().toUpperCase();
+    if (!normalized) throw new Error("방 코드를 입력하세요.");
+    await emitAck("spectate-room", { code: normalized, password: String(password || "") });
   } catch (error) {
     showToast(error.message, true);
   }
@@ -380,40 +426,78 @@ function statusText(status) {
 }
 
 function roomSubtitle(room) {
-  if (room.status === "WAITING") return `최소 배팅 ${formatNumber(room.minBet)} CHIP · 최대 ${room.maxPlayers}명 · 1인 플레이 가능`;
-  if (room.status === "PLAYING") return "각자 딜러를 상대로 21에 가까운 점수를 만드세요.";
-  if (room.status === "DEALER_TURN") return "모든 플레이어의 턴이 끝났습니다. 딜러가 진행합니다.";
-  return "이번 판 결과가 확정되었습니다.";
+  const visibility = room.privacy === "PRIVATE" ? "친구방" : "공개방";
+  const spectatorText = room.allowSpectators ? `관전 허용 · 관전자 ${room.spectatorCount || 0}명` : "관전 불가";
+  if (room.status === "WAITING") return `${visibility} · 최소 배팅 ${formatNumber(room.minBet)} CHIP · 최대 ${room.maxPlayers}명 · ${spectatorText}`;
+  if (room.status === "PLAYING") return `${visibility} · 각자 딜러를 상대로 21에 가까운 점수를 만드세요. · ${spectatorText}`;
+  if (room.status === "DEALER_TURN") return `${visibility} · 모든 플레이어의 턴이 끝났습니다. 딜러가 진행합니다. · ${spectatorText}`;
+  return `${visibility} · 이번 판 결과가 확정되었습니다. · ${spectatorText}`;
 }
 
 function renderRoom() {
   if (!currentRoom || !currentUser) return;
   const room = currentRoom;
   const me = room.players.find((p) => p.userId === currentUser.id);
-  if (!me) {
+  const spectator = room.spectators?.find((item) => item.userId === currentUser.id);
+  const isSpectator = !me && Boolean(spectator);
+
+  if (!me && !spectator) {
     showLobby();
     return;
   }
 
-  currentUser.chips = me.chips;
-  els.headerChips.textContent = formatNumber(me.chips);
+  if (me) {
+    currentUser.chips = me.chips;
+    els.headerChips.textContent = formatNumber(me.chips);
+  }
+
   els.roomStatusBadge.textContent = statusText(room.status);
+  if (els.roomPrivacyBadge) {
+    els.roomPrivacyBadge.textContent = room.privacy === "PRIVATE"
+      ? `PRIVATE${room.hasPassword ? " 🔒" : ""}`
+      : "PUBLIC";
+  }
   els.roomCodeBadge.textContent = room.code;
   els.roomTitle.textContent = room.name;
-  els.roomSubtext.textContent = roomSubtitle(room);
+  els.roomSubtext.textContent = isSpectator ? `👁 관전 중 · ${roomSubtitle(room)}` : roomSubtitle(room);
   els.dealerScore.textContent = room.dealerScore ?? "?";
   els.dealerCats.innerHTML = room.dealerCards.length
     ? room.dealerCards.map((card) => catHtml(card)).join("")
     : `<div class="empty-state">게임이 시작되면 딜러 고양이가 등장합니다.</div>`;
 
   renderPlayers(room);
-  renderTurn(room, me);
-  renderControls(room, me);
+  renderSpectators(room, isSpectator);
+  renderTurn(room, me, isSpectator);
+  renderControls(room, me, isSpectator);
   renderChat(room);
 
-  const canLeave = ["WAITING", "RESULT"].includes(room.status);
+  const canLeave = isSpectator || ["WAITING", "RESULT"].includes(room.status);
   els.leaveRoomButton.disabled = !canLeave;
-  els.leaveRoomButton.title = canLeave ? "" : "게임 진행 중에는 나갈 수 없습니다.";
+  els.leaveRoomButton.textContent = isSpectator ? "관전 나가기" : "방 나가기";
+  els.leaveRoomButton.title = canLeave ? "" : "게임 진행 중에는 플레이어로 나갈 수 없습니다.";
+}
+
+function renderSpectators(room, isSpectator = false) {
+  if (!els.spectatorBar) return;
+  const spectators = Array.isArray(room.spectators) ? room.spectators : [];
+
+  if (!room.allowSpectators && spectators.length === 0) {
+    els.spectatorBar.classList.add("hidden");
+    return;
+  }
+
+  const names = spectators.length
+    ? spectators.map((spectator) => `${spectator.connected ? "👁" : "○"} ${escapeHtml(spectator.nickname)}${spectator.userId === currentUser.id ? " (나)" : ""}`).join(" · ")
+    : "현재 관전자가 없습니다.";
+
+  els.spectatorBar.innerHTML = `
+    <div>
+      <strong>관전자 ${spectators.length}명</strong>
+      <span>${names}</span>
+    </div>
+    ${isSpectator ? '<span class="mini-pill spectator-pill">SPECTATING</span>' : ""}
+  `;
+  els.spectatorBar.classList.remove("hidden");
 }
 
 function renderPlayers(room) {
@@ -472,12 +556,33 @@ function renderPlayers(room) {
   }).join("");
 }
 
-function renderTurn(room, me) {
+function renderTurn(room, me, isSpectator = false) {
   els.turnBanner.classList.remove("my-turn");
+
+  if (isSpectator) {
+    if (room.status === "WAITING") {
+      const ready = room.players.filter((p) => p.ready).length;
+      els.turnBanner.textContent = `관전 중 · ${ready}/${room.players.length}명 READY`;
+      return;
+    }
+    if (room.status === "DEALER_TURN") {
+      els.turnBanner.textContent = "관전 중 · 딜러가 카드를 뽑는 중입니다...";
+      return;
+    }
+    if (room.status === "RESULT") {
+      els.turnBanner.textContent = "관전 중 · 이번 판 결과를 확인하세요.";
+      return;
+    }
+
+    const current = room.players.find((p) => p.userId === room.currentTurnUserId);
+    els.turnBanner.textContent = current ? `관전 중 · ${current.nickname}님의 차례입니다.` : "관전 중";
+    return;
+  }
+
   if (room.status === "WAITING") {
     const ready = room.players.filter((p) => p.ready).length;
     els.turnBanner.textContent = room.players.length === 1
-      ? `${ready}/1명 READY`
+      ? `${ready}/1명 READY · 혼자서도 시작할 수 있습니다.`
       : `${ready}/${room.players.length}명 READY`;
     return;
   }
@@ -496,15 +601,22 @@ function renderTurn(room, me) {
   const handText = hasSplitHands ? ` ${handNumber}번째 핸드` : "";
   if (!current) {
     els.turnBanner.textContent = "다음 턴을 준비 중입니다.";
-  } else if (current.userId === me.userId) {
-    els.turnBanner.textContent = `당신의${handText} 차례입니다!`;
+  } else if (me && current.userId === me.userId) {
+    els.turnBanner.textContent = `당신의${handText} 차례입니다! HIT, STAND, DOUBLE, SPLIT 중 선택하세요.`;
     els.turnBanner.classList.add("my-turn");
   } else {
     els.turnBanner.textContent = `${current.nickname}님의${handText} 차례입니다.`;
   }
 }
 
-function renderControls(room, me) {
+function renderControls(room, me, isSpectator = false) {
+  if (isSpectator || !me) {
+    els.waitingControls.classList.add("hidden");
+    els.playingControls.classList.add("hidden");
+    els.resultControls.classList.add("hidden");
+    return;
+  }
+
   const waiting = room.status === "WAITING";
   const playing = room.status === "PLAYING" || room.status === "DEALER_TURN";
   const result = room.status === "RESULT";
@@ -525,7 +637,7 @@ function renderControls(room, me) {
     els.startButton.classList.toggle("hidden", !isHost);
     const allReady = room.players.length >= 1 && room.players.every((p) => p.ready);
     els.startButton.disabled = !allReady;
-    els.startButton.textContent = room.players.length === 1 ? "게임 시작" : "게임 시작";
+    els.startButton.textContent = room.players.length === 1 ? "혼자 게임 시작" : "게임 시작";
   }
 
   if (playing) {
@@ -557,7 +669,7 @@ function renderChat(room) {
   els.chatMessages.innerHTML = room.messages?.length
     ? room.messages.map((message) => `
       <div class="chat-message ${message.userId === currentUser.id ? "mine" : ""}">
-        <strong>${escapeHtml(message.nickname)}</strong>
+        <strong>${escapeHtml(message.nickname)}${message.role === "SPECTATOR" ? ' <em class="chat-role">관전자</em>' : ""}</strong>
         <span>${escapeHtml(message.text)}</span>
       </div>`).join("")
     : `<div class="empty-state">첫 메시지를 보내보세요.</div>`;
@@ -757,7 +869,10 @@ els.createRoomForm.addEventListener("submit", async (event) => {
     const result = await emitAck("create-room", {
       name: els.roomName.value,
       maxPlayers: Number(els.maxPlayers.value),
-      minBet: Number(els.minBet.value)
+      minBet: Number(els.minBet.value),
+      privacy: els.roomPrivacy.value,
+      password: els.roomPrivacy.value === "PRIVATE" ? els.roomPassword.value : "",
+      allowSpectators: Boolean(els.allowSpectators.checked)
     }, { timeoutMs: 10000 });
 
     if (result?.reused) {
@@ -771,14 +886,25 @@ els.createRoomForm.addEventListener("submit", async (event) => {
   }
 });
 
-els.joinCodeButton.addEventListener("click", () => joinRoom(els.roomCodeInput.value));
+els.roomPrivacy.addEventListener("change", () => {
+  const isPrivate = els.roomPrivacy.value === "PRIVATE";
+  els.roomPasswordLabel.classList.toggle("hidden", !isPrivate);
+  if (!isPrivate) els.roomPassword.value = "";
+});
+
+els.joinCodeButton.addEventListener("click", () => joinRoom(els.roomCodeInput.value, els.joinRoomPassword.value));
+els.spectateCodeButton.addEventListener("click", () => spectateRoom(els.roomCodeInput.value, els.joinRoomPassword.value));
 els.roomCodeInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") joinRoom(els.roomCodeInput.value);
+  if (event.key === "Enter") joinRoom(els.roomCodeInput.value, els.joinRoomPassword.value);
+});
+els.joinRoomPassword.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") joinRoom(els.roomCodeInput.value, els.joinRoomPassword.value);
 });
 
 els.quickJoinButton.addEventListener("click", () => {
-  if (!availableRooms.length) return showToast("현재 참가 가능한 방이 없습니다.", true);
-  joinRoom(availableRooms[0].code);
+  const room = availableRooms.find((item) => item.canJoin);
+  if (!room) return showToast("현재 참가 가능한 공개방이 없습니다.", true);
+  joinRoom(room.code);
 });
 
 els.setBetButton.addEventListener("click", async () => {

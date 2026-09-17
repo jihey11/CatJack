@@ -352,6 +352,7 @@ const ROOM_COLLECTION = "rooms";
 const ROOM_LOCK_TTL_MS = 60000;
 const ROOM_LOCK_WAIT_MS = 70;
 const ROOM_LOCK_MAX_ATTEMPTS = 180;
+const MAX_SPECTATORS = 20;
 
 async function loadRoom(code) {
   const db = getDB();
@@ -444,7 +445,17 @@ async function withRoomLock(code, task) {
 async function findUserRoom(userId) {
   const db = getDB();
   const room = await db.collection(ROOM_COLLECTION).findOne(
-    { $and: [{ "players.userId": userId }, roomNotExpiredFilter()] },
+    {
+      $and: [
+        {
+          $or: [
+            { "players.userId": userId },
+            { "spectators.userId": userId }
+          ]
+        },
+        roomNotExpiredFilter()
+      ]
+    },
     { projection: { _id: 0, code: 1 } }
   );
   return room?.code || null;
@@ -457,6 +468,7 @@ async function saveRoom(room) {
   const doc = {
     ...room,
     playersCount: room.players?.length || 0,
+    spectatorsCount: room.spectators?.length || 0,
     updatedAt: now,
     expiresAt: roomExpiresAt(now)
   };
@@ -528,7 +540,60 @@ function visibleDealerCards(room) {
   return [];
 }
 
+function ensureSpectators(room) {
+  if (!Array.isArray(room.spectators)) room.spectators = [];
+  return room.spectators;
+}
+
+function isRoomMember(room, userId) {
+  return room.players.some((player) => player.userId === userId)
+    || ensureSpectators(room).some((spectator) => spectator.userId === userId);
+}
+
+function roomMemberRole(room, userId) {
+  if (room.players.some((player) => player.userId === userId)) return "PLAYER";
+  if (ensureSpectators(room).some((spectator) => spectator.userId === userId)) return "SPECTATOR";
+  return null;
+}
+
+async function verifyRoomAccess(room, password) {
+  if (!room?.passwordHash) return true;
+  const value = String(password || "");
+  if (!value) throw new Error("이 방은 비밀번호가 필요합니다.");
+  const matches = await bcrypt.compare(value, room.passwordHash);
+  if (!matches) throw new Error("방 비밀번호가 올바르지 않습니다.");
+  return true;
+}
+
+function makePlayer(user, socket, room) {
+  return {
+    userId: user._id.toString(),
+    nickname: user.nickname,
+    socketId: socket.id,
+    connected: true,
+    chips: user.chips,
+    bet: Math.min(room.minBet, user.chips),
+    ready: false,
+    hand: [],
+    hands: [],
+    state: "WAITING",
+    result: null,
+    chipChange: 0
+  };
+}
+
+function makeSpectator(user, socket) {
+  return {
+    userId: user._id.toString(),
+    nickname: user.nickname,
+    socketId: socket.id,
+    connected: true,
+    joinedAt: Date.now()
+  };
+}
+
 function roomState(room) {
+  ensureSpectators(room);
   const currentTurnUserId = room.turnIndex >= 0 ? room.players[room.turnIndex]?.userId || null : null;
   const currentTurnHandIndex = room.turnIndex >= 0 ? Math.max(0, Number(room.turnHandIndex) || 0) : null;
 
@@ -540,6 +605,15 @@ function roomState(room) {
     maxPlayers: room.maxPlayers,
     minBet: room.minBet,
     status: room.status,
+    privacy: room.privacy || "PUBLIC",
+    hasPassword: Boolean(room.passwordHash),
+    allowSpectators: room.allowSpectators !== false,
+    spectatorCount: room.spectators.length,
+    spectators: room.spectators.map((spectator) => ({
+      userId: spectator.userId,
+      nickname: spectator.nickname,
+      connected: spectator.connected !== false
+    })),
     currentTurnUserId,
     currentTurnHandIndex,
     dealerCards: visibleDealerCards(room),
@@ -590,7 +664,7 @@ function roomState(room) {
         }))
       };
     }),
-    messages: room.messages.slice(-30)
+    messages: (room.messages || []).slice(-30)
   };
 }
 
@@ -598,22 +672,53 @@ async function publicRoomList() {
   const db = getDB();
   const roomDocs = await db.collection(ROOM_COLLECTION)
     .find(
-      { $and: [{ status: "WAITING" }, roomNotExpiredFilter()] },
-      { projection: { _id: 0, code: 1, name: 1, maxPlayers: 1, minBet: 1, playersCount: 1, "players.userId": 1 } }
+      {
+        $and: [
+          { $or: [{ privacy: "PUBLIC" }, { privacy: { $exists: false } }] },
+          roomNotExpiredFilter()
+        ]
+      },
+      {
+        projection: {
+          _id: 0,
+          code: 1,
+          name: 1,
+          maxPlayers: 1,
+          minBet: 1,
+          status: 1,
+          allowSpectators: 1,
+          playersCount: 1,
+          spectatorsCount: 1,
+          "players.userId": 1,
+          "spectators.userId": 1
+        }
+      }
     )
     .sort({ updatedAt: -1 })
     .limit(50)
     .toArray();
 
   return roomDocs
-    .map((room) => ({
-      code: room.code,
-      name: room.name,
-      players: Number.isFinite(room.playersCount) ? room.playersCount : (room.players?.length || 0),
-      maxPlayers: room.maxPlayers,
-      minBet: room.minBet
-    }))
-    .filter((room) => room.players < room.maxPlayers);
+    .map((room) => {
+      const players = Number.isFinite(room.playersCount) ? room.playersCount : (room.players?.length || 0);
+      const spectators = Number.isFinite(room.spectatorsCount) ? room.spectatorsCount : (room.spectators?.length || 0);
+      const allowSpectators = room.allowSpectators !== false;
+      const canJoin = room.status === "WAITING" && players < room.maxPlayers;
+      const canSpectate = allowSpectators;
+      return {
+        code: room.code,
+        name: room.name,
+        players,
+        maxPlayers: room.maxPlayers,
+        spectators,
+        minBet: room.minBet,
+        status: room.status || "WAITING",
+        allowSpectators,
+        canJoin,
+        canSpectate
+      };
+    })
+    .filter((room) => room.canJoin || room.canSpectate);
 }
 
 async function emitRoom(room) {
@@ -1006,47 +1111,69 @@ async function startRound(room) {
 
 async function removePlayerFromWaitingRoom(room, userId) {
   const index = room.players.findIndex((p) => p.userId === userId);
-  if (index < 0) return;
+  if (index < 0) return false;
   room.players.splice(index, 1);
 
   if (room.players.length === 0) {
     await deleteRoom(room.code);
-    return;
+    io.to(room.code).emit("room-closed", { message: "플레이어가 모두 나가 방이 종료되었습니다." });
+    return true;
   }
+
   if (room.hostId === userId) room.hostId = room.players[0].userId;
   await emitRoom(room);
+  return true;
 }
 
-// 사용자가 다른 방으로 이동하려고 할 때 이전 WAITING/RESULT 방 기록이 남아 있으면
-// 분산 Socket 상태 조회를 기다리지 않고 DB 기준으로 바로 정리합니다.
-// fetchSockets()는 여러 Vercel 인스턴스의 응답을 기다릴 수 있어 방 생성/참가를
-// 수 초씩 지연시키는 원인이 될 수 있습니다.
+async function removeSpectator(room, userId) {
+  const spectators = ensureSpectators(room);
+  const index = spectators.findIndex((spectator) => spectator.userId === userId);
+  if (index < 0) return false;
+  spectators.splice(index, 1);
+  await emitRoom(room);
+  return true;
+}
+
 async function findConflictingUserRoom(userId, targetCode = null) {
   const code = await findUserRoom(userId);
   if (!code || code === targetCode) return null;
 
   const room = await loadRoom(code);
   if (!room) return null;
+
   const player = room.players.find((p) => p.userId === userId);
-  if (!player) return null;
+  const spectator = ensureSpectators(room).find((item) => item.userId === userId);
+  if (!player && !spectator) return null;
 
-  // 게임이 실제 진행 중일 때만 다른 방 이동을 막습니다.
-  if (!["WAITING", "RESULT"].includes(room.status)) return code;
+  // 관전자는 언제든 다른 방으로 이동할 수 있습니다.
+  // 플레이어는 실제 게임 진행 중일 때만 이동을 막습니다.
+  if (player && !["WAITING", "RESULT"].includes(room.status)) return code;
 
-  let previousSocketId = player.socketId || null;
+  const member = player || spectator;
+  let previousSocketId = member?.socketId || null;
   let removed = false;
 
   try {
     await withRoomLock(code, async () => {
       const latestRoom = await loadRoom(code);
       if (!latestRoom) return;
-      const latestPlayer = latestRoom.players.find((p) => p.userId === userId);
-      if (!latestPlayer) return;
-      if (!["WAITING", "RESULT"].includes(latestRoom.status)) return;
 
-      previousSocketId = latestPlayer.socketId || previousSocketId;
-      await removePlayerFromWaitingRoom(latestRoom, userId);
-      removed = true;
+      const latestPlayer = latestRoom.players.find((p) => p.userId === userId);
+      const latestSpectator = ensureSpectators(latestRoom).find((item) => item.userId === userId);
+
+      if (latestPlayer) {
+        if (!["WAITING", "RESULT"].includes(latestRoom.status)) return;
+        previousSocketId = latestPlayer.socketId || previousSocketId;
+        await removePlayerFromWaitingRoom(latestRoom, userId);
+        removed = true;
+        return;
+      }
+
+      if (latestSpectator) {
+        previousSocketId = latestSpectator.socketId || previousSocketId;
+        await removeSpectator(latestRoom, userId);
+        removed = true;
+      }
     });
   } catch (error) {
     if (!await loadRoom(code)) return null;
@@ -1054,7 +1181,6 @@ async function findConflictingUserRoom(userId, targetCode = null) {
   }
 
   if (removed) {
-    // 다른 탭/인스턴스에 남은 이전 연결 종료는 새 방 입장을 막지 않도록 비동기로 처리합니다.
     if (previousSocketId) {
       try {
         io.in(previousSocketId).disconnectSockets(true);
@@ -1102,12 +1228,13 @@ io.on("connection", (socket) => {
     try {
       const db = getDB();
 
-      // 이전 요청에서 방은 생성됐지만 ACK만 늦게/유실된 경우가 있습니다.
-      // 이때 새 방을 만들거나 오류를 내지 않고 기존 방으로 바로 복구합니다.
+      // 이전 요청에서 방은 생성됐지만 ACK만 유실됐을 수 있으므로
+      // 이미 소속된 방이 있으면 새로 만들지 않고 해당 방으로 복구합니다.
       const existingCode = await findUserRoom(socket.user.id);
       if (existingCode) {
         let previousSocketId = null;
         let existingRoomState = null;
+        let existingRole = null;
 
         try {
           await withRoomLock(existingCode, async () => {
@@ -1115,30 +1242,30 @@ io.on("connection", (socket) => {
             if (!existingRoom) return;
 
             const player = existingRoom.players.find((p) => p.userId === socket.user.id);
-            if (!player) return;
+            const spectator = ensureSpectators(existingRoom).find((item) => item.userId === socket.user.id);
+            const member = player || spectator;
+            if (!member) return;
 
-            previousSocketId = player.socketId || null;
-            player.socketId = socket.id;
-            player.connected = true;
-            player.disconnectedAt = null;
+            previousSocketId = member.socketId || null;
+            member.socketId = socket.id;
+            member.connected = true;
+            member.disconnectedAt = null;
+            existingRole = player ? "PLAYER" : "SPECTATOR";
 
             socket.data.roomCode = existingCode;
+            socket.data.roomRole = existingRole;
             socket.join(existingCode);
 
             await saveRoom(existingRoom);
             existingRoomState = roomState(existingRoom);
           });
         } catch (error) {
-          // 조회 직후 TTL 정리 등으로 방이 사라졌다면 정상적으로 새 방 생성을 계속합니다.
           if (await loadRoom(existingCode)) throw error;
         }
 
         if (existingRoomState) {
-          // 현재 소켓에는 어댑터 전체 브로드캐스트를 기다리지 않고 직접 보냅니다.
           socket.emit("room-state", existingRoomState);
-          callback({ ok: true, code: existingCode, reused: true });
-
-          // 다른 참가자에게도 재접속 상태를 알리되 ACK는 기다리지 않습니다.
+          callback({ ok: true, code: existingCode, reused: true, role: existingRole });
           io.to(existingCode).emit("room-state", existingRoomState);
 
           if (previousSocketId && previousSocketId !== socket.id) {
@@ -1149,9 +1276,7 @@ io.on("connection", (socket) => {
             }
           }
 
-          emitRoomList().catch((error) => {
-            console.error("방 목록 갱신 실패:", error);
-          });
+          emitRoomList().catch((error) => console.error("방 목록 갱신 실패:", error));
           return;
         }
       }
@@ -1163,13 +1288,23 @@ io.on("connection", (socket) => {
       const maxPlayers = Math.min(4, Math.max(1, Number(payload.maxPlayers) || 4));
       const minBet = normalizeBet(payload.minBet || 10);
       const name = String(payload.name || `${socket.user.nickname}의 방`).trim().slice(0, 24) || "고양이 블랙잭 방";
+      const privacy = String(payload.privacy || "PUBLIC").toUpperCase() === "PRIVATE" ? "PRIVATE" : "PUBLIC";
+      const roomPassword = privacy === "PRIVATE" ? String(payload.password || "").trim() : "";
 
+      if (roomPassword && (roomPassword.length < 4 || roomPassword.length > 12)) {
+        throw new Error("친구방 비밀번호는 4~12자로 입력하세요.");
+      }
+
+      const passwordHash = roomPassword ? await bcrypt.hash(roomPassword, 8) : null;
       const room = {
         code,
         name,
         hostId: socket.user.id,
         maxPlayers,
         minBet,
+        privacy,
+        passwordHash,
+        allowSpectators: payload.allowSpectators !== false,
         status: "WAITING",
         deckId: null,
         dealerHand: [],
@@ -1177,35 +1312,21 @@ io.on("connection", (socket) => {
         turnHandIndex: -1,
         dealerRunning: false,
         messages: [],
+        spectators: [],
         revision: 0,
-        players: [{
-          userId: socket.user.id,
-          nickname: freshUser.nickname,
-          socketId: socket.id,
-          connected: true,
-          chips: freshUser.chips,
-          bet: Math.min(minBet, freshUser.chips),
-          ready: false,
-          hand: [],
-          hands: [],
-          state: "WAITING",
-          result: null,
-          chipChange: 0
-        }]
+        players: []
       };
+      room.players.push(makePlayer(freshUser, socket, room));
 
-      // 핵심 상태만 먼저 DB에 저장하고 즉시 성공 응답을 보냅니다.
-      // 전체 공개 방 목록 재조회/브로드캐스트는 응답 뒤에 비동기로 처리합니다.
       await saveRoom(room);
       socket.data.roomCode = code;
+      socket.data.roomRole = "PLAYER";
       socket.join(code);
 
       socket.emit("room-state", roomState(room));
-      callback({ ok: true, code });
+      callback({ ok: true, code, role: "PLAYER" });
 
-      emitRoomList().catch((error) => {
-        console.error("방 목록 갱신 실패:", error);
-      });
+      emitRoomList().catch((error) => console.error("방 목록 갱신 실패:", error));
     } catch (error) {
       callback({ ok: false, error: error.message });
     }
@@ -1218,12 +1339,13 @@ io.on("connection", (socket) => {
       if (!await loadRoom(code)) throw new Error("존재하지 않는 방입니다.");
 
       const conflictingRoom = await findConflictingUserRoom(socket.user.id, code);
-      if (conflictingRoom) throw new Error("이미 다른 방에 참가 중입니다.");
+      if (conflictingRoom) throw new Error("이미 다른 방에서 게임 중입니다.");
 
       let rejoined = false;
       await withRoomLock(code, async () => {
         const room = await loadRoom(code);
         if (!room) throw new Error("존재하지 않는 방입니다.");
+        ensureSpectators(room);
 
         const existing = room.players.find((p) => p.userId === socket.user.id);
         if (existing) {
@@ -1232,6 +1354,7 @@ io.on("connection", (socket) => {
           existing.connected = true;
           existing.disconnectedAt = null;
           socket.data.roomCode = code;
+          socket.data.roomRole = "PLAYER";
           socket.join(code);
           await emitRoom(room);
           rejoined = true;
@@ -1242,35 +1365,104 @@ io.on("connection", (socket) => {
           return;
         }
 
-        if (room.status !== "WAITING") throw new Error("이미 게임이 시작된 방입니다.");
-        if (room.players.length >= room.maxPlayers) throw new Error("방이 가득 찼습니다.");
+        const existingSpectatorIndex = room.spectators.findIndex((item) => item.userId === socket.user.id);
+        if (room.status !== "WAITING") throw new Error("이미 게임이 시작된 방입니다. 관전으로 참가할 수 있습니다.");
+        if (room.players.length >= room.maxPlayers) throw new Error("방이 가득 찼습니다. 관전으로 참가할 수 있습니다.");
+
+        if (existingSpectatorIndex < 0) {
+          await verifyRoomAccess(room, payload.password);
+        }
 
         const db = getDB();
         const freshUser = await db.collection("users").findOne({ _id: new ObjectId(socket.user.id) });
         if (!freshUser) throw new Error("사용자를 찾을 수 없습니다.");
 
-        room.players.push({
-          userId: socket.user.id,
-          nickname: freshUser.nickname,
-          socketId: socket.id,
-          connected: true,
-          chips: freshUser.chips,
-          bet: Math.min(room.minBet, freshUser.chips),
-          ready: false,
-          hand: [],
-          hands: [],
-          state: "WAITING",
-          result: null,
-          chipChange: 0
-        });
+        // 같은 방을 관전 중이었다면 플레이어로 전환합니다.
+        if (existingSpectatorIndex >= 0) room.spectators.splice(existingSpectatorIndex, 1);
+        room.players.push(makePlayer(freshUser, socket, room));
 
         socket.data.roomCode = code;
+        socket.data.roomRole = "PLAYER";
         socket.join(code);
         await emitRoom(room);
       });
 
-      await emitRoomList();
-      callback({ ok: true, code, rejoined });
+      emitRoomList().catch((error) => console.error("방 목록 갱신 실패:", error));
+      callback({ ok: true, code, rejoined, role: "PLAYER" });
+    } catch (error) {
+      callback({ ok: false, error: error.message });
+    }
+  });
+
+  socket.on("spectate-room", async (payload = {}, callback = () => {}) => {
+    try {
+      const code = String(payload.code || "").trim().toUpperCase();
+      if (!code) throw new Error("방 코드를 입력하세요.");
+      if (!await loadRoom(code)) throw new Error("존재하지 않는 방입니다.");
+
+      const conflictingRoom = await findConflictingUserRoom(socket.user.id, code);
+      if (conflictingRoom) throw new Error("이미 다른 방에서 게임 중입니다.");
+
+      let rejoined = false;
+      await withRoomLock(code, async () => {
+        const room = await loadRoom(code);
+        if (!room) throw new Error("존재하지 않는 방입니다.");
+        ensureSpectators(room);
+
+        const existingPlayer = room.players.find((p) => p.userId === socket.user.id);
+        if (existingPlayer) {
+          const previousSocketId = existingPlayer.socketId;
+          existingPlayer.socketId = socket.id;
+          existingPlayer.connected = true;
+          existingPlayer.disconnectedAt = null;
+          socket.data.roomCode = code;
+          socket.data.roomRole = "PLAYER";
+          socket.join(code);
+          await emitRoom(room);
+          rejoined = true;
+
+          if (previousSocketId && previousSocketId !== socket.id) {
+            io.in(previousSocketId).disconnectSockets(true);
+          }
+          return;
+        }
+
+        if (room.allowSpectators === false) throw new Error("이 방은 관전을 허용하지 않습니다.");
+
+        const existing = room.spectators.find((item) => item.userId === socket.user.id);
+        if (existing) {
+          const previousSocketId = existing.socketId;
+          existing.socketId = socket.id;
+          existing.connected = true;
+          existing.disconnectedAt = null;
+          socket.data.roomCode = code;
+          socket.data.roomRole = "SPECTATOR";
+          socket.join(code);
+          await emitRoom(room);
+          rejoined = true;
+
+          if (previousSocketId && previousSocketId !== socket.id) {
+            io.in(previousSocketId).disconnectSockets(true);
+          }
+          return;
+        }
+
+        await verifyRoomAccess(room, payload.password);
+        if (room.spectators.length >= MAX_SPECTATORS) throw new Error("관전자 정원이 가득 찼습니다.");
+
+        const db = getDB();
+        const freshUser = await db.collection("users").findOne({ _id: new ObjectId(socket.user.id) });
+        if (!freshUser) throw new Error("사용자를 찾을 수 없습니다.");
+
+        room.spectators.push(makeSpectator(freshUser, socket));
+        socket.data.roomCode = code;
+        socket.data.roomRole = "SPECTATOR";
+        socket.join(code);
+        await emitRoom(room);
+      });
+
+      emitRoomList().catch((error) => console.error("방 목록 갱신 실패:", error));
+      callback({ ok: true, code, rejoined, role: socket.data.roomRole || "SPECTATOR" });
     } catch (error) {
       callback({ ok: false, error: error.message });
     }
@@ -1279,21 +1471,38 @@ io.on("connection", (socket) => {
   socket.on("leave-room", async (_payload, callback = () => {}) => {
     try {
       const code = socket.data.roomCode || await findUserRoom(socket.user.id);
-      if (!code || !await loadRoom(code)) return callback({ ok: true });
+      if (!code || !await loadRoom(code)) {
+        socket.data.roomCode = null;
+        socket.data.roomRole = null;
+        return callback({ ok: true });
+      }
 
+      let roomDeleted = false;
       await withRoomLock(code, async () => {
         const room = await loadRoom(code);
         if (!room) return;
-        if (!["WAITING", "RESULT"].includes(room.status)) {
-          throw new Error("게임 진행 중에는 방을 나갈 수 없습니다.");
+
+        const spectator = ensureSpectators(room).find((item) => item.userId === socket.user.id);
+        if (spectator) {
+          await removeSpectator(room, socket.user.id);
+          return;
         }
+
+        const player = room.players.find((item) => item.userId === socket.user.id);
+        if (!player) return;
+        if (!["WAITING", "RESULT"].includes(room.status)) {
+          throw new Error("게임 진행 중에는 플레이어로 방을 나갈 수 없습니다.");
+        }
+
         await removePlayerFromWaitingRoom(room, socket.user.id);
+        roomDeleted = room.players.length <= 1 && !await loadRoom(code);
       });
 
       socket.data.roomCode = null;
+      socket.data.roomRole = null;
       socket.leave(code);
-      await emitRoomList();
-      callback({ ok: true });
+      emitRoomList().catch((error) => console.error("방 목록 갱신 실패:", error));
+      callback({ ok: true, roomDeleted });
     } catch (error) {
       callback({ ok: false, error: error.message });
     }
@@ -1547,12 +1756,14 @@ io.on("connection", (socket) => {
       await withRoomLock(code, async () => {
         const room = await loadRoom(code);
         if (!room) throw new Error("방을 찾을 수 없습니다.");
+        if (!isRoomMember(room, socket.user.id)) throw new Error("이 방의 참가자만 채팅할 수 있습니다.");
         const text = String(payload.text || "").trim().slice(0, 200);
         if (!text) throw new Error("메시지를 입력하세요.");
         room.messages.push({
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
           userId: socket.user.id,
           nickname: socket.user.nickname,
+          role: roomMemberRole(room, socket.user.id),
           text,
           createdAt: Date.now()
         });
@@ -1573,14 +1784,15 @@ io.on("connection", (socket) => {
       await withRoomLock(code, async () => {
         const room = await loadRoom(code);
         if (!room) return;
-        const player = room.players.find((p) => p.userId === socket.user.id);
-        if (!player || player.socketId !== socket.id) return;
 
-        // Vercel의 WebSocket 재연결이나 일시적인 네트워크 끊김을 고려해
-        // 즉시 퇴장시키지 않고 짧은 재접속 유예 시간을 둔다.
-        player.connected = false;
-        player.socketId = null;
-        player.disconnectedAt = Date.now();
+        const player = room.players.find((p) => p.userId === socket.user.id);
+        const spectator = ensureSpectators(room).find((item) => item.userId === socket.user.id);
+        const member = player || spectator;
+        if (!member || member.socketId !== socket.id) return;
+
+        member.connected = false;
+        member.socketId = null;
+        member.disconnectedAt = Date.now();
         await emitRoom(room);
       });
     } catch (error) {
@@ -1597,6 +1809,14 @@ io.on("connection", (socket) => {
         await withRoomLock(code, async () => {
           const latestRoom = await loadRoom(code);
           if (!latestRoom) return;
+
+          const latestSpectator = ensureSpectators(latestRoom).find((item) => item.userId === socket.user.id);
+          if (latestSpectator && !latestSpectator.connected && !latestSpectator.socketId) {
+            await removeSpectator(latestRoom, socket.user.id);
+            roomListChanged = true;
+            return;
+          }
+
           const latestPlayer = latestRoom.players.find((p) => p.userId === socket.user.id);
           if (!latestPlayer || latestPlayer.connected || latestPlayer.socketId) return;
 

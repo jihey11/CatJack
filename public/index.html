@@ -71,7 +71,7 @@
           <div>
             <p class="eyebrow">WELCOME BACK</p>
             <h2><span id="welcomeNickname">플레이어</span>님, 오늘도 냥블랙잭!</h2>
-            <p>친구와 방 코드를 공유하거나 공개방에 바로 참가하세요.</p>
+            <p>친구방 코드를 공유하거나 공개방에 참가하고, 진행 중인 게임은 관전할 수 있습니다.</p>
           </div>
           <div class="welcome-cat">😼</div>
         </div>
@@ -107,13 +107,32 @@
                   </select>
                 </label>
               </div>
+              <div class="two-cols">
+                <label>방 공개 설정
+                  <select id="roomPrivacy">
+                    <option value="PUBLIC" selected>공개방</option>
+                    <option value="PRIVATE">친구방 (비공개)</option>
+                  </select>
+                </label>
+                <label id="roomPasswordLabel" class="hidden">친구방 비밀번호
+                  <input id="roomPassword" type="password" minlength="4" maxlength="12" placeholder="선택: 4~12자" />
+                </label>
+              </div>
+              <label class="check-row">
+                <input id="allowSpectators" type="checkbox" checked />
+                <span>관전자 입장 허용</span>
+              </label>
               <button class="primary wide" type="submit">방 만들기</button>
             </form>
 
             <div class="divider"><span>또는</span></div>
-            <div class="code-join">
+            <div class="code-join code-join-expanded">
               <input id="roomCodeInput" maxlength="6" placeholder="방 코드 6자리" />
-              <button id="joinCodeButton" class="secondary" type="button">코드 참가</button>
+              <input id="joinRoomPassword" type="password" maxlength="12" placeholder="비밀번호 (있을 때만)" />
+              <div class="code-join-actions">
+                <button id="joinCodeButton" class="secondary" type="button">코드 참가</button>
+                <button id="spectateCodeButton" class="ghost" type="button">관전하기</button>
+              </div>
             </div>
           </section>
 
@@ -121,7 +140,7 @@
             <div class="panel-title room-list-title">
               <div>
                 <p class="eyebrow">PUBLIC ROOMS</p>
-                <h3>참가 가능한 방</h3>
+                <h3>공개방 목록</h3>
               </div>
               <button id="quickJoinButton" class="secondary small" type="button">빠른 참가</button>
             </div>
@@ -137,6 +156,7 @@
           <div>
             <div class="room-meta-line">
               <span id="roomStatusBadge" class="status-badge">WAITING</span>
+              <span id="roomPrivacyBadge" class="status-badge subtle">PUBLIC</span>
               <span id="roomCodeBadge" class="room-code">------</span>
               <button id="copyCodeButton" class="icon-button" type="button" title="방 코드 복사">⧉</button>
             </div>
@@ -159,6 +179,7 @@
             <section class="turn-banner" id="turnBanner">게임 시작을 기다리는 중</section>
 
             <section id="playersGrid" class="players-grid"></section>
+            <section id="spectatorBar" class="spectator-bar hidden"></section>
 
             <section id="controlsPanel" class="controls-panel">
               <div id="waitingControls" class="waiting-controls">

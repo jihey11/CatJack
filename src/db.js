@@ -59,7 +59,8 @@ async function ensureDatabaseSetup() {
     await db.collection("rooms").createIndexes([
       { key: { code: 1 }, unique: true },
       { key: { "players.userId": 1 } },
-      { key: { status: 1, updatedAt: -1 } }
+      { key: { "spectators.userId": 1 } },
+      { key: { privacy: 1, status: 1, updatedAt: -1 } }
     ]);
 
     await setupRoomLifecycle(db);
