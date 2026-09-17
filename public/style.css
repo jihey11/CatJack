@@ -2567,3 +2567,90 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
 .image-roomlist-panel button {
   font-weight: 900 !important;
 }
+
+/* ---------- High-contrast lobby palette: no olive ---------- */
+.image-welcome-card h2,
+.image-create-panel .panel-title h3,
+.image-roomlist-panel .panel-title h3 {
+  color: #2f2925 !important;
+  font-weight: 900 !important;
+  text-shadow: 0 1px 1px rgba(255, 252, 246, .75), 0 2px 5px rgba(52, 42, 35, .10) !important;
+}
+
+.image-welcome-card .eyebrow,
+.image-create-panel .eyebrow,
+.image-roomlist-panel .eyebrow,
+.image-create-panel .panel-title .eyebrow,
+.image-roomlist-panel .panel-title .eyebrow {
+  color: #17624f !important;
+  font-weight: 1000 !important;
+  text-shadow: 0 1px 0 rgba(255, 252, 246, .80) !important;
+}
+
+.image-welcome-card p:not(.eyebrow) {
+  color: #4b3c34 !important;
+  font-weight: 750 !important;
+  text-shadow: 0 1px 0 rgba(255, 252, 246, .72) !important;
+}
+
+.image-create-panel label,
+.image-create-panel .field-label,
+.image-create-panel .check-row span,
+.image-create-panel .divider span {
+  color: #3b302b !important;
+  font-weight: 900 !important;
+  text-shadow: 0 1px 0 rgba(255, 252, 246, .75) !important;
+}
+
+.image-create-panel input,
+.image-create-panel select,
+.image-roomlist-panel input,
+.image-roomlist-panel select {
+  color: #322a26 !important;
+  font-weight: 800 !important;
+}
+
+.image-create-panel input::placeholder,
+.image-roomlist-panel input::placeholder {
+  color: #8c5f50 !important;
+  opacity: 1 !important;
+  font-weight: 800 !important;
+}
+
+.image-roomlist-panel .empty-state,
+.image-roomlist-panel .room-item,
+.image-roomlist-panel .room-item p,
+.image-roomlist-panel .room-item span {
+  color: #443730 !important;
+  font-weight: 800 !important;
+  text-shadow: 0 1px 0 rgba(255, 252, 246, .72) !important;
+}
+
+.image-roomlist-panel .room-item h4 {
+  color: #2d2723 !important;
+  font-weight: 950 !important;
+}
+
+.image-roomlist-panel .mini-pill,
+.image-roomlist-panel .status-badge,
+.image-roomlist-panel .room-code {
+  color: #214f43 !important;
+  font-weight: 900 !important;
+}
+
+.image-create-panel .primary {
+  background: linear-gradient(180deg, #377764 0%, #285a4c 100%) !important;
+  color: #fffaf3 !important;
+  border-color: rgba(25, 79, 65, .28) !important;
+}
+
+.image-create-panel .secondary,
+.image-create-panel .ghost,
+.image-roomlist-panel .secondary {
+  color: #2f2925 !important;
+  font-weight: 900 !important;
+}
+
+.image-create-panel .check-row input {
+  accent-color: #17624f !important;
+}
