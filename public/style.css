@@ -2037,3 +2037,66 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
     padding: 24px 18px 22px !important;
   }
 }
+
+/* ---------- Home image panel final fix ---------- */
+.image-create-panel,
+.image-roomlist-panel,
+.image-welcome-card {
+  overflow: visible !important;
+  box-shadow: none !important;
+}
+
+/* Left panel should grow with content so nothing gets clipped */
+.image-create-panel {
+  aspect-ratio: auto !important;
+  height: auto !important;
+  min-height: 980px !important;
+  background-size: 100% 100% !important;
+  background-position: center top !important;
+  padding: 34px 28px 42px !important;
+}
+
+/* Give a little more space at the bottom for the lower buttons */
+.image-create-panel .code-join-actions {
+  padding-bottom: 18px;
+}
+
+/* Right panel can keep the decorative look but should not look boxed in */
+.image-roomlist-panel {
+  aspect-ratio: auto !important;
+  height: auto !important;
+  min-height: 980px !important;
+  padding: 24px 20px 24px !important;
+}
+
+.image-roomlist-panel .panel-title {
+  padding: 8px 8px 0;
+}
+
+.image-roomlist-panel .room-list {
+  height: auto !important;
+  min-height: 760px !important;
+  padding: 0 6px 12px;
+}
+
+/* Remove the remaining "card inside card" feeling */
+.image-create-panel,
+.image-roomlist-panel {
+  border-radius: 0 !important;
+  background-color: transparent !important;
+  outline: none !important;
+}
+
+/* Make sure the parent panel visuals don't peek through */
+.panel.image-create-panel,
+.panel.image-roomlist-panel {
+  border: 0 !important;
+}
+
+@media (max-width: 980px) {
+  .image-create-panel,
+  .image-roomlist-panel {
+    min-height: auto !important;
+    border-radius: 0 !important;
+  }
+}
