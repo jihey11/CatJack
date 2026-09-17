@@ -558,11 +558,12 @@ function renderPlayers(room) {
         <div class="player-head">
           <div>
             <div class="player-name">${player.connected ? "🐱" : '<span class="offline-dot">●</span>'} ${escapeHtml(player.nickname)} ${isMe ? "(나)" : ""}</div>
-            <div class="player-stats">
-              <span class="mini-pill">🪙 ${formatNumber(player.chips)}</span>
-              <span class="mini-pill">TOTAL BET ${formatNumber(player.bet)}</span>
-              ${stateLabel}
-            </div>
+            ${room.status === "WAITING" ? `
+              <div class="player-stats">
+                <span class="mini-pill">🪙 ${formatNumber(player.chips)}</span>
+                <span class="mini-pill">TOTAL BET ${formatNumber(player.bet)}</span>
+                ${stateLabel}
+              </div>` : ""}
           </div>
         </div>
         <div class="player-hands">${handHtml}</div>
