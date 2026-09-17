@@ -1027,3 +1027,240 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
 #logoButton:hover {
   transform: translateY(-1px);
 }
+
+
+/* =========================================================
+   Blackjack tutorial
+   ========================================================= */
+.tutorial-button {
+  border: 1px solid rgba(92,125,111,.24);
+  border-radius: 12px;
+  padding: 9px 12px;
+  background: rgba(92,125,111,.11);
+  color: var(--green-strong);
+  font-weight: 900;
+  transition: .18s ease;
+}
+.tutorial-button:hover {
+  background: rgba(92,125,111,.18);
+  transform: translateY(-1px);
+}
+
+.tutorial-guide {
+  display: grid;
+  gap: 14px;
+}
+
+.tutorial-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(92,125,111,.16), rgba(231,223,210,.58));
+  border: 1px solid rgba(92,125,111,.18);
+}
+.tutorial-hero-icon {
+  flex: 0 0 54px;
+  width: 54px;
+  height: 54px;
+  display: grid;
+  place-items: center;
+  border-radius: 17px;
+  background: var(--green-strong);
+  color: #f7f3ec;
+  font-size: 31px;
+  box-shadow: 0 8px 18px rgba(72,102,89,.16);
+}
+.tutorial-kicker {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--green-strong);
+  font-size: 10px;
+  font-weight: 1000;
+  letter-spacing: .15em;
+}
+.tutorial-hero h4 {
+  margin: 0 0 5px;
+  color: var(--text-strong);
+  font-size: 19px;
+}
+.tutorial-hero p,
+.tutorial-section p,
+.tutorial-blackjack p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.tutorial-section {
+  padding: 17px;
+  border: 1px solid rgba(92,79,67,.11);
+  border-radius: 18px;
+  background: rgba(247,243,236,.78);
+}
+.tutorial-section > h4 {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 13px;
+  color: var(--text-strong);
+  font-size: 15px;
+}
+.tutorial-section > h4 > span {
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--green-strong);
+  color: #f7f3ec;
+  font-size: 11px;
+}
+
+.tutorial-score-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 9px;
+}
+.tutorial-score-grid > div {
+  padding: 13px 10px;
+  text-align: center;
+  border-radius: 14px;
+  background: rgba(232,225,215,.72);
+  border: 1px solid rgba(92,79,67,.08);
+}
+.tutorial-score-grid strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: 15px;
+}
+.tutorial-score-grid small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.tutorial-tip {
+  margin-top: 10px !important;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: rgba(92,125,111,.08);
+}
+
+.tutorial-flow {
+  display: grid;
+  gap: 7px;
+}
+.tutorial-flow > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: rgba(232,225,215,.48);
+  color: var(--text);
+  font-size: 12px;
+}
+.tutorial-flow b { color: var(--green-strong); }
+
+.tutorial-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+.tutorial-actions article {
+  min-width: 0;
+  padding: 13px;
+  border-radius: 14px;
+  border: 1px solid rgba(92,79,67,.10);
+  background: rgba(239,234,227,.84);
+}
+.tutorial-actions strong {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--green-strong);
+  font-size: 13px;
+}
+.tutorial-actions p {
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.tutorial-rules {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.tutorial-rules > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px;
+  border-radius: 12px;
+  background: rgba(232,225,215,.52);
+}
+.tutorial-rules strong {
+  color: var(--text-strong);
+  font-size: 12px;
+}
+.tutorial-rules span {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.tutorial-blackjack {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 17px;
+  border-radius: 18px;
+  color: #f7f3ec;
+  background: linear-gradient(135deg, #526f61, #304b40);
+  box-shadow: 0 12px 24px rgba(48,75,64,.14);
+}
+.tutorial-blackjack-mark {
+  flex: 0 0 44px;
+  font-size: 31px;
+  text-align: center;
+  color: #d9c49f;
+}
+.tutorial-blackjack strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #f2dfb9;
+  letter-spacing: .08em;
+}
+.tutorial-blackjack p { color: rgba(255,255,255,.82); }
+.tutorial-blackjack b { color: #f2dfb9; }
+
+.tutorial-note {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 11px 13px;
+  border-left: 4px solid var(--accent);
+  border-radius: 8px 13px 13px 8px;
+  background: rgba(180,139,95,.08);
+  color: var(--muted);
+  font-size: 12px;
+}
+.tutorial-note strong { color: var(--accent); }
+
+@media (max-width: 600px) {
+  .tutorial-score-grid,
+  .tutorial-actions,
+  .tutorial-rules {
+    grid-template-columns: 1fr;
+  }
+  .tutorial-hero {
+    align-items: flex-start;
+  }
+  .tutorial-hero-icon {
+    flex-basis: 46px;
+    width: 46px;
+    height: 46px;
+    font-size: 26px;
+  }
+}

@@ -6,7 +6,7 @@ const els = {
   loginUsername: $("#loginUsername"), loginPassword: $("#loginPassword"),
   signupUsername: $("#signupUsername"), signupNickname: $("#signupNickname"), signupPassword: $("#signupPassword"),
   headerChips: $("#headerChips"), welcomeNickname: $("#welcomeNickname"), logoutButton: $("#logoutButton"),
-  logoButton: $("#logoButton"), chipRewardButton: $("#chipRewardButton"), rankingButton: $("#rankingButton"), historyButton: $("#historyButton"),
+  logoButton: $("#logoButton"), tutorialButton: $("#tutorialButton"), chipRewardButton: $("#chipRewardButton"), rankingButton: $("#rankingButton"), historyButton: $("#historyButton"),
   createRoomForm: $("#createRoomForm"), roomName: $("#roomName"), maxPlayers: $("#maxPlayers"), minBet: $("#minBet"),
   roomPrivacy: $("#roomPrivacy"), roomPassword: $("#roomPassword"), roomPasswordLabel: $("#roomPasswordLabel"), allowSpectators: $("#allowSpectators"),
   roomCodeInput: $("#roomCodeInput"), joinRoomPassword: $("#joinRoomPassword"), joinCodeButton: $("#joinCodeButton"), spectateCodeButton: $("#spectateCodeButton"), quickJoinButton: $("#quickJoinButton"), roomList: $("#roomList"),
@@ -755,6 +755,88 @@ function renderChipRewardModal(rewards) {
   $("#claimRecoveryReward")?.addEventListener("click", () => claimChipReward("recovery"));
 }
 
+
+function showTutorial() {
+  openModal("CatJack 블랙잭 튜토리얼", `
+    <div class="tutorial-guide">
+      <section class="tutorial-hero">
+        <div class="tutorial-hero-icon">♠</div>
+        <div>
+          <span class="tutorial-kicker">HOW TO PLAY</span>
+          <h4>21에 가깝게, 딜러보다 높게!</h4>
+          <p>카드 합이 21을 넘지 않으면서 딜러보다 높은 점수를 만들면 승리합니다.</p>
+        </div>
+      </section>
+
+      <section class="tutorial-section">
+        <h4><span>1</span> 카드 점수</h4>
+        <div class="tutorial-score-grid">
+          <div><strong>2 ~ 10</strong><small>적힌 숫자 그대로</small></div>
+          <div><strong>J · Q · K</strong><small>각각 10점</small></div>
+          <div><strong>A</strong><small>1점 또는 11점</small></div>
+        </div>
+        <p class="tutorial-tip">A는 내 점수가 21을 넘지 않도록 자동으로 1 또는 11로 계산됩니다.</p>
+      </section>
+
+      <section class="tutorial-section">
+        <h4><span>2</span> 게임 진행</h4>
+        <div class="tutorial-flow">
+          <div><b>①</b><span>CHIP을 배팅합니다.</span></div>
+          <div><b>②</b><span>READY 후 방장이 게임을 시작합니다.</span></div>
+          <div><b>③</b><span>각자 카드 2장을 받고 차례대로 행동합니다.</span></div>
+          <div><b>④</b><span>모든 플레이가 끝나면 딜러가 카드를 공개합니다.</span></div>
+          <div><b>⑤</b><span>딜러와 점수를 비교해 CHIP을 정산합니다.</span></div>
+        </div>
+      </section>
+
+      <section class="tutorial-section">
+        <h4><span>3</span> 내 차례에 할 수 있는 행동</h4>
+        <div class="tutorial-actions">
+          <article>
+            <strong>🐾 HIT</strong>
+            <p>카드를 한 장 더 받습니다. 21을 넘으면 즉시 BUST로 패배합니다.</p>
+          </article>
+          <article>
+            <strong>😼 STAND</strong>
+            <p>더 이상 카드를 받지 않고 현재 점수로 턴을 종료합니다.</p>
+          </article>
+          <article>
+            <strong>2× DOUBLE</strong>
+            <p>첫 2장일 때 배팅을 한 번 더 추가하고 카드 1장만 받은 뒤 자동 STAND합니다.</p>
+          </article>
+          <article>
+            <strong>✂ SPLIT</strong>
+            <p>처음 받은 두 카드의 값이 같으면 같은 금액을 추가 배팅해 두 개의 핸드로 나눕니다.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="tutorial-section">
+        <h4><span>4</span> 승패 판정</h4>
+        <div class="tutorial-rules">
+          <div><strong>21 초과</strong><span>즉시 패배 (BUST)</span></div>
+          <div><strong>딜러 21 초과</strong><span>남아 있는 플레이어 승리</span></div>
+          <div><strong>내 점수 &gt; 딜러</strong><span>승리</span></div>
+          <div><strong>내 점수 = 딜러</strong><span>무승부 · 배팅금 반환</span></div>
+        </div>
+      </section>
+
+      <section class="tutorial-blackjack">
+        <div class="tutorial-blackjack-mark">♛</div>
+        <div>
+          <strong>BLACKJACK</strong>
+          <p>처음 받은 카드 2장으로 21을 만들면 BLACKJACK입니다. CatJack에서는 일반 승리보다 높은 <b>2.5배 지급</b>을 받습니다.</p>
+        </div>
+      </section>
+
+      <div class="tutorial-note">
+        <strong>TIP</strong>
+        <span>딜러는 점수가 17 이상이 될 때까지 자동으로 카드를 받습니다.</span>
+      </div>
+    </div>
+  `);
+}
+
 async function showChipRewards() {
   try {
     const { rewards } = await api("/api/chip-rewards");
@@ -980,6 +1062,7 @@ els.chatForm.addEventListener("submit", async (event) => {
   } catch (error) { showToast(error.message, true); }
 });
 
+els.tutorialButton.addEventListener("click", showTutorial);
 els.chipRewardButton.addEventListener("click", showChipRewards);
 els.rankingButton.addEventListener("click", showRanking);
 els.historyButton.addEventListener("click", showHistory);
