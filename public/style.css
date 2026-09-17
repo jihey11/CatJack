@@ -1592,3 +1592,106 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
     padding: 10px 8px;
   }
 }
+
+/* ---- Force remove translucent rectangle inside player table ---- */
+.player-card .player-hands,
+.player-card .player-hand,
+.player-card .player-hand.active-hand,
+.player-card .player-cats,
+.player-card .empty-state {
+  background: transparent !important;
+  background-color: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.player-card .player-hand {
+  padding: 0 !important;
+}
+
+.player-card .player-cats {
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+
+.player-card .empty-state {
+  width: 100%;
+}
+
+/* ---- Center align content inside player table ---- */
+.player-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: center;
+}
+
+.player-card .player-head {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  margin-bottom: 10px;
+}
+
+.player-card .player-head > div {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.player-card .player-name {
+  justify-content: center;
+  text-align: center;
+}
+
+.player-card .player-stats {
+  justify-content: center;
+}
+
+.player-card .player-hands {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.player-card .player-hand {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.player-card .hand-header {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.player-card .hand-label {
+  width: 100%;
+  text-align: center;
+}
+
+.player-card .hand-meta {
+  justify-content: center;
+  text-align: center;
+}
+
+.player-card .player-cats {
+  width: 100%;
+  justify-content: center;
+}
+
+@media (max-width: 680px) {
+  .player-card .player-stats,
+  .player-card .hand-meta {
+    gap: 5px;
+  }
+}
