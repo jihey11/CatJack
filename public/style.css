@@ -2196,3 +2196,131 @@ main { max-width: 1360px; margin: auto; padding: 30px 24px 64px; }
     padding: 10px 12px;
   }
 }
+
+/* ---------- Strong targeted readability patch for lobby hero/panels ---------- */
+.image-welcome-card .welcome-copy {
+  background: rgba(255, 250, 243, 0.58) !important;
+  border: 1px solid rgba(185, 168, 140, 0.18);
+  box-shadow: 0 10px 24px rgba(96, 81, 66, 0.08);
+}
+
+.image-welcome-card .eyebrow,
+.image-welcome-card h2,
+.image-welcome-card p:not(.eyebrow) {
+  display: inline-block;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: rgba(255, 250, 243, 0.38);
+}
+
+.image-welcome-card .eyebrow {
+  margin-bottom: 8px;
+}
+
+.image-welcome-card h2 {
+  margin-bottom: 8px;
+  background: rgba(255, 250, 243, 0.48);
+}
+
+.image-welcome-card p:not(.eyebrow) {
+  background: rgba(255, 250, 243, 0.44);
+  color: #4d4037 !important;
+}
+
+.image-create-panel .panel-title > div,
+.image-roomlist-panel .panel-title > div {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: rgba(255, 251, 245, 0.60);
+  border: 1px solid rgba(185, 168, 140, 0.18);
+  box-shadow: 0 8px 20px rgba(96, 81, 66, 0.06);
+}
+
+.image-create-panel .panel-title .eyebrow,
+.image-roomlist-panel .panel-title .eyebrow {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 8px;
+  background: rgba(255, 251, 245, 0.35);
+}
+
+.image-create-panel .panel-title h3,
+.image-roomlist-panel .panel-title h3 {
+  line-height: 1.15;
+}
+
+.image-create-panel form > label,
+.image-create-panel .two-cols > label {
+  padding: 8px 10px 10px;
+  border-radius: 16px;
+  background: rgba(255, 251, 245, 0.34);
+  border: 1px solid rgba(185, 168, 140, 0.12);
+  box-shadow: 0 4px 12px rgba(96, 81, 66, 0.03);
+}
+
+.image-create-panel form > label,
+.image-create-panel .two-cols > label,
+.image-create-panel .check-row,
+.image-create-panel .divider,
+.image-create-panel .code-join {
+  backdrop-filter: blur(1.5px);
+}
+
+.image-create-panel form > label,
+.image-create-panel .two-cols > label,
+.image-create-panel .check-row span,
+.image-create-panel .divider span {
+  color: #4c4036 !important;
+  text-shadow: 0 1px 0 rgba(255,255,255,0.62);
+  font-weight: 800 !important;
+}
+
+.image-create-panel input,
+.image-create-panel select {
+  margin-top: 8px;
+  background: rgba(255, 252, 247, 0.96) !important;
+  border-color: rgba(167, 145, 116, 0.18) !important;
+  color: #4a3e35 !important;
+}
+
+.image-create-panel input::placeholder {
+  color: #b38f78 !important;
+  opacity: 1;
+}
+
+.image-create-panel .check-row {
+  background: rgba(255, 251, 245, 0.56) !important;
+}
+
+.image-create-panel .divider {
+  background: rgba(255, 251, 245, 0.48) !important;
+}
+
+.image-create-panel .code-join {
+  background: rgba(255, 251, 245, 0.26);
+  border-radius: 18px;
+  padding: 8px;
+}
+
+.image-roomlist-panel .empty-state {
+  background: rgba(255, 251, 245, 0.82) !important;
+  color: #57483e !important;
+  box-shadow: 0 6px 14px rgba(96, 81, 66, 0.04);
+}
+
+@media (max-width: 680px) {
+  .image-create-panel .panel-title > div,
+  .image-roomlist-panel .panel-title > div,
+  .image-welcome-card .welcome-copy {
+    padding: 8px 10px;
+  }
+
+  .image-create-panel form > label,
+  .image-create-panel .two-cols > label {
+    padding: 7px 8px 9px;
+  }
+}
