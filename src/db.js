@@ -3,28 +3,73 @@ const { setupRoomLifecycle } = require("./roomLifecycle");
 
 let client;
 let database;
+let connectPromise;
+let setupPromise;
 
 async function connectDB() {
   if (database) return database;
+  if (connectPromise) return connectPromise;
 
   const uri = process.env.MONGODB_URI;
   if (!uri) {
     throw new Error("MONGODB_URI가 .env에 설정되어 있지 않습니다.");
   }
 
-  client = new MongoClient(uri);
-  await client.connect();
-  database = client.db();
+  connectPromise = (async () => {
+    const nextClient = new MongoClient(uri, {
+      maxPoolSize: 10,
+      minPoolSize: 0,
+      maxIdleTimeMS: 60000,
+      serverSelectionTimeoutMS: 6000,
+      connectTimeoutMS: 6000
+    });
 
-  await database.collection("users").createIndex({ username: 1 }, { unique: true });
-  await database.collection("users").createIndex({ nickname: 1 }, { unique: true });
-  await database.collection("games").createIndex({ createdAt: -1 });
-  await database.collection("rooms").createIndex({ code: 1 }, { unique: true });
-  await database.collection("rooms").createIndex({ "players.userId": 1 });
-  await database.collection("rooms").createIndex({ status: 1, updatedAt: -1 });
-  await setupRoomLifecycle(database);
+    await nextClient.connect();
+    client = nextClient;
+    database = client.db();
+    return database;
+  })().catch((error) => {
+    connectPromise = null;
+    throw error;
+  });
 
-  return database;
+  return connectPromise;
+}
+
+// 인덱스 생성과 기존 오래된 방 정리는 서버의 첫 요청을 막지 않도록
+// DB 연결과 분리해서 실행합니다. 이미 만들어진 인덱스는 그대로 재사용됩니다.
+async function ensureDatabaseSetup() {
+  if (setupPromise) return setupPromise;
+
+  setupPromise = (async () => {
+    const db = await connectDB();
+
+    await Promise.all([
+      db.collection("users").createIndexes([
+        { key: { username: 1 }, unique: true },
+        { key: { nickname: 1 }, unique: true }
+      ]),
+      db.collection("games").createIndex({ createdAt: -1 }),
+      db.collection("socket_io_events").createIndex(
+        { createdAt: 1 },
+        { expireAfterSeconds: 3600 }
+      )
+    ]);
+
+    await db.collection("rooms").createIndexes([
+      { key: { code: 1 }, unique: true },
+      { key: { "players.userId": 1 } },
+      { key: { status: 1, updatedAt: -1 } }
+    ]);
+
+    await setupRoomLifecycle(db);
+    return db;
+  })().catch((error) => {
+    setupPromise = null;
+    throw error;
+  });
+
+  return setupPromise;
 }
 
 function getDB() {
@@ -34,6 +79,10 @@ function getDB() {
 
 async function closeDB() {
   if (client) await client.close();
+  client = null;
+  database = null;
+  connectPromise = null;
+  setupPromise = null;
 }
 
-module.exports = { connectDB, getDB, closeDB };
+module.exports = { connectDB, ensureDatabaseSetup, getDB, closeDB };

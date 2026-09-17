@@ -8,7 +8,7 @@ const bcrypt = require("bcryptjs");
 const { ObjectId } = require("mongodb");
 const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/mongo-adapter");
-const { connectDB, getDB, closeDB } = require("./src/db");
+const { connectDB, ensureDatabaseSetup, getDB, closeDB } = require("./src/db");
 const { createToken, verifyToken, authMiddleware } = require("./src/auth");
 const { roomExpiresAt, roomNotExpiredFilter } = require("./src/roomLifecycle");
 
@@ -41,16 +41,38 @@ app.get("/", (_req, res) => {
 });
 
 let startupPromise;
+let databaseSetupScheduled = false;
+
+function scheduleDatabaseSetup() {
+  if (databaseSetupScheduled) return;
+  databaseSetupScheduled = true;
+
+  // 인덱스 생성/오래된 데이터 정리는 첫 화면과 방 생성 응답을 막지 않습니다.
+  // Vercel의 콜드 스타트에서는 DB 연결만 먼저 끝낸 뒤 유지보수 작업을 뒤에서 실행합니다.
+  const timer = setTimeout(() => {
+    ensureDatabaseSetup().catch((error) => {
+      databaseSetupScheduled = false;
+      console.error("DB 백그라운드 초기화 실패:", error);
+    });
+  }, 1500);
+  if (typeof timer.unref === "function") timer.unref();
+}
 
 async function ensureStarted() {
   if (!startupPromise) {
     startupPromise = (async () => {
       const db = await connectDB();
       const events = db.collection("socket_io_events");
-      await events.createIndex({ createdAt: 1 }, { expireAfterSeconds: 3600 });
+
+      // Mongo Adapter는 컬렉션만 있으면 바로 사용할 수 있습니다.
+      // TTL 인덱스 생성은 scheduleDatabaseSetup()에서 비동기로 처리합니다.
       io.adapter(createAdapter(events, { addCreatedAtField: true }));
+      scheduleDatabaseSetup();
       return db;
-    })();
+    })().catch((error) => {
+      startupPromise = null;
+      throw error;
+    });
   }
   return startupPromise;
 }
@@ -736,9 +758,10 @@ async function removePlayerFromWaitingRoom(room, userId) {
   await emitRoom(room);
 }
 
-// Vercel에서 연결이 갑자기 종료되면 MongoDB의 player.connected 값이
-// 이전 상태로 남을 수 있습니다. 다른 방에 들어가려는 순간 실제 Socket.IO
-// 연결이 살아 있는지 확인하고, 끊긴 WAITING/RESULT 방 기록은 자동 정리합니다.
+// 사용자가 다른 방으로 이동하려고 할 때 이전 WAITING/RESULT 방 기록이 남아 있으면
+// 분산 Socket 상태 조회를 기다리지 않고 DB 기준으로 바로 정리합니다.
+// fetchSockets()는 여러 Vercel 인스턴스의 응답을 기다릴 수 있어 방 생성/참가를
+// 수 초씩 지연시키는 원인이 될 수 있습니다.
 async function findConflictingUserRoom(userId, targetCode = null) {
   const code = await findUserRoom(userId);
   if (!code || code === targetCode) return null;
@@ -748,42 +771,43 @@ async function findConflictingUserRoom(userId, targetCode = null) {
   const player = room.players.find((p) => p.userId === userId);
   if (!player) return null;
 
-  let socketAlive = false;
-  if (player.socketId) {
-    try {
-      const sockets = await io.in(player.socketId).fetchSockets();
-      socketAlive = sockets.some((connectedSocket) => connectedSocket.id === player.socketId);
-    } catch (error) {
-      console.error("기존 소켓 상태 확인 실패:", error);
-      socketAlive = Boolean(player.connected && player.socketId);
-    }
+  // 게임이 실제 진행 중일 때만 다른 방 이동을 막습니다.
+  if (!["WAITING", "RESULT"].includes(room.status)) return code;
+
+  let previousSocketId = player.socketId || null;
+  let removed = false;
+
+  try {
+    await withRoomLock(code, async () => {
+      const latestRoom = await loadRoom(code);
+      if (!latestRoom) return;
+      const latestPlayer = latestRoom.players.find((p) => p.userId === userId);
+      if (!latestPlayer) return;
+      if (!["WAITING", "RESULT"].includes(latestRoom.status)) return;
+
+      previousSocketId = latestPlayer.socketId || previousSocketId;
+      await removePlayerFromWaitingRoom(latestRoom, userId);
+      removed = true;
+    });
+  } catch (error) {
+    if (!await loadRoom(code)) return null;
+    throw error;
   }
 
-  if (!socketAlive && ["WAITING", "RESULT"].includes(room.status)) {
-    let removed = false;
-    try {
-      await withRoomLock(code, async () => {
-        const latestRoom = await loadRoom(code);
-        if (!latestRoom) return;
-        const latestPlayer = latestRoom.players.find((p) => p.userId === userId);
-        if (!latestPlayer) return;
-
-        // 잠금을 기다리는 사이 재접속했다면 제거하지 않습니다.
-        if (latestPlayer.connected || latestPlayer.socketId) return;
-        if (!["WAITING", "RESULT"].includes(latestRoom.status)) return;
-
-        await removePlayerFromWaitingRoom(latestRoom, userId);
-        removed = true;
-      });
-    } catch (error) {
-      if (!await loadRoom(code)) return null;
-      throw error;
+  if (removed) {
+    // 다른 탭/인스턴스에 남은 이전 연결 종료는 새 방 입장을 막지 않도록 비동기로 처리합니다.
+    if (previousSocketId) {
+      try {
+        io.in(previousSocketId).disconnectSockets(true);
+      } catch (error) {
+        console.error("이전 소켓 종료 실패:", error);
+      }
     }
 
-    if (removed) {
-      await emitRoomList();
-      return null;
-    }
+    emitRoomList().catch((error) => {
+      console.error("방 목록 갱신 실패:", error);
+    });
+    return null;
   }
 
   return code;
@@ -808,15 +832,74 @@ io.use(async (socket, next) => {
   }
 });
 
-io.on("connection", async (socket) => {
-  socket.emit("rooms-list", await publicRoomList());
+io.on("connection", (socket) => {
+  // 방 목록 조회 때문에 create/join 이벤트 등록 자체가 늦어지지 않도록
+  // 연결 직후의 목록 조회는 비동기로 처리합니다.
+  publicRoomList()
+    .then((rooms) => socket.emit("rooms-list", rooms))
+    .catch((error) => console.error("초기 방 목록 조회 실패:", error));
 
   socket.on("create-room", async (payload = {}, callback = () => {}) => {
     try {
-      const conflictingRoom = await findConflictingUserRoom(socket.user.id);
-      if (conflictingRoom) throw new Error("이미 다른 방에 참가 중입니다.");
       const db = getDB();
+
+      // 이전 요청에서 방은 생성됐지만 ACK만 늦게/유실된 경우가 있습니다.
+      // 이때 새 방을 만들거나 오류를 내지 않고 기존 방으로 바로 복구합니다.
+      const existingCode = await findUserRoom(socket.user.id);
+      if (existingCode) {
+        let previousSocketId = null;
+        let existingRoomState = null;
+
+        try {
+          await withRoomLock(existingCode, async () => {
+            const existingRoom = await loadRoom(existingCode);
+            if (!existingRoom) return;
+
+            const player = existingRoom.players.find((p) => p.userId === socket.user.id);
+            if (!player) return;
+
+            previousSocketId = player.socketId || null;
+            player.socketId = socket.id;
+            player.connected = true;
+            player.disconnectedAt = null;
+
+            socket.data.roomCode = existingCode;
+            socket.join(existingCode);
+
+            await saveRoom(existingRoom);
+            existingRoomState = roomState(existingRoom);
+          });
+        } catch (error) {
+          // 조회 직후 TTL 정리 등으로 방이 사라졌다면 정상적으로 새 방 생성을 계속합니다.
+          if (await loadRoom(existingCode)) throw error;
+        }
+
+        if (existingRoomState) {
+          // 현재 소켓에는 어댑터 전체 브로드캐스트를 기다리지 않고 직접 보냅니다.
+          socket.emit("room-state", existingRoomState);
+          callback({ ok: true, code: existingCode, reused: true });
+
+          // 다른 참가자에게도 재접속 상태를 알리되 ACK는 기다리지 않습니다.
+          io.to(existingCode).emit("room-state", existingRoomState);
+
+          if (previousSocketId && previousSocketId !== socket.id) {
+            try {
+              io.in(previousSocketId).disconnectSockets(true);
+            } catch (error) {
+              console.error("이전 소켓 종료 실패:", error);
+            }
+          }
+
+          emitRoomList().catch((error) => {
+            console.error("방 목록 갱신 실패:", error);
+          });
+          return;
+        }
+      }
+
       const freshUser = await db.collection("users").findOne({ _id: new ObjectId(socket.user.id) });
+      if (!freshUser) throw new Error("사용자를 찾을 수 없습니다.");
+
       const code = await randomRoomCode();
       const maxPlayers = Math.min(4, Math.max(2, Number(payload.maxPlayers) || 4));
       const minBet = normalizeBet(payload.minBet || 10);
@@ -850,11 +933,18 @@ io.on("connection", async (socket) => {
         }]
       };
 
+      // 핵심 상태만 먼저 DB에 저장하고 즉시 성공 응답을 보냅니다.
+      // 전체 공개 방 목록 재조회/브로드캐스트는 응답 뒤에 비동기로 처리합니다.
+      await saveRoom(room);
       socket.data.roomCode = code;
       socket.join(code);
-      await emitRoom(room);
-      await emitRoomList();
+
+      socket.emit("room-state", roomState(room));
       callback({ ok: true, code });
+
+      emitRoomList().catch((error) => {
+        console.error("방 목록 갱신 실패:", error);
+      });
     } catch (error) {
       callback({ ok: false, error: error.message });
     }

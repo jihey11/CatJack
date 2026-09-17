@@ -28,7 +28,8 @@ let currentRoom = null;
 let currentRoomRevision = -1;
 let availableRooms = [];
 let toastTimer = null;
-const pendingSocketEvents = new Set();
+const pendingSocketEvents = new Map();
+const createRoomSubmitButton = els.createRoomForm?.querySelector('button[type="submit"]');
 
 function escapeHtml(value) {
   return String(value ?? "")
@@ -103,7 +104,7 @@ function logout() {
   currentUser = null;
   currentRoom = null;
   currentRoomRevision = -1;
-  pendingSocketEvents.clear();
+  cancelPendingSocketEvents("로그아웃했습니다.");
   sessionStorage.removeItem("catjack_token");
   clearStoredRooms();
   if (socket) socket.disconnect();
@@ -176,6 +177,11 @@ function connectSocket() {
     }
   });
 
+  socket.on("disconnect", () => {
+    cancelPendingSocketEvents("실시간 연결이 끊겼습니다. 재연결 후 다시 시도해 주세요.");
+    setCreateRoomLoading(false);
+  });
+
   socket.io.on("reconnect", () => {
     connectionErrorShown = false;
     refreshRoomListHttp();
@@ -209,38 +215,56 @@ function formatNumber(value) {
   return Number(value || 0).toLocaleString("ko-KR", { maximumFractionDigits: 1 });
 }
 
-function emitAck(event, payload = {}) {
+function setCreateRoomLoading(loading) {
+  if (!createRoomSubmitButton) return;
+  createRoomSubmitButton.disabled = loading;
+  createRoomSubmitButton.textContent = loading ? "방 만드는 중..." : "방 만들기";
+}
+
+function cancelPendingSocketEvents(message = "실시간 연결이 끊겼습니다. 다시 시도해 주세요.") {
+  const pending = [...pendingSocketEvents.values()];
+  for (const request of pending) request.cancel(message);
+}
+
+function emitAck(event, payload = {}, options = {}) {
   return new Promise((resolve, reject) => {
     if (!socket?.connected) return reject(new Error("서버와 연결되어 있지 않습니다."));
     if (pendingSocketEvents.has(event)) {
       return reject(new Error("이 요청을 처리 중입니다. 잠시만 기다려 주세요."));
     }
 
-    pendingSocketEvents.add(event);
+    const timeoutMs = Math.max(3000, Number(options.timeoutMs) || 15000);
     let settled = false;
-    const timeoutId = setTimeout(() => {
+    let timeoutId = null;
+
+    const finish = (error, result) => {
       if (settled) return;
       settled = true;
+      if (timeoutId) clearTimeout(timeoutId);
       pendingSocketEvents.delete(event);
-      reject(new Error("서버 응답이 지연되고 있습니다. 다시 시도해 주세요."));
-    }, 25000);
+      if (error) reject(error);
+      else resolve(result);
+    };
+
+    timeoutId = setTimeout(() => {
+      finish(new Error("서버 응답이 지연되고 있습니다. 잠시 후 다시 시도해 주세요."));
+    }, timeoutMs);
+
+    pendingSocketEvents.set(event, {
+      cancel(message) {
+        finish(new Error(message));
+      }
+    });
 
     try {
       socket.emit(event, payload, (result) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeoutId);
-        pendingSocketEvents.delete(event);
-        if (!result?.ok) return reject(new Error(result?.error || "요청에 실패했습니다."));
-        resolve(result);
+        if (!result?.ok) {
+          return finish(new Error(result?.error || "요청에 실패했습니다."));
+        }
+        finish(null, result);
       });
     } catch (error) {
-      if (!settled) {
-        settled = true;
-        clearTimeout(timeoutId);
-        pendingSocketEvents.delete(event);
-      }
-      reject(error);
+      finish(error);
     }
   });
 }
@@ -589,14 +613,24 @@ els.signupForm.addEventListener("submit", async (event) => {
 
 els.createRoomForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (createRoomSubmitButton?.disabled) return;
+
+  setCreateRoomLoading(true);
   try {
-    await emitAck("create-room", {
+    const result = await emitAck("create-room", {
       name: els.roomName.value,
       maxPlayers: Number(els.maxPlayers.value),
       minBet: Number(els.minBet.value)
-    });
+    }, { timeoutMs: 10000 });
+
+    if (result?.reused) {
+      showToast("이미 만들어진 방으로 다시 연결했습니다.");
+    }
   } catch (error) {
-    showToast(error.message, true);
+    // ACK만 유실됐더라도 room-state를 받았다면 이미 방 생성은 성공한 상태입니다.
+    if (!currentRoom) showToast(error.message, true);
+  } finally {
+    setCreateRoomLoading(false);
   }
 });
 
