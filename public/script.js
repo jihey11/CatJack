@@ -6,7 +6,8 @@ const els = {
   loginUsername: $("#loginUsername"), loginPassword: $("#loginPassword"),
   signupUsername: $("#signupUsername"), signupNickname: $("#signupNickname"), signupPassword: $("#signupPassword"),
   headerChips: $("#headerChips"), welcomeNickname: $("#welcomeNickname"), logoutButton: $("#logoutButton"),
-  logoButton: $("#logoButton"), tutorialButton: $("#tutorialButton"), chipRewardButton: $("#chipRewardButton"), rankingButton: $("#rankingButton"), historyButton: $("#historyButton"),
+  logoButton: $("#logoButton"), mobileMenuButton: $("#mobileMenuButton"), topMenuActions: $("#topMenuActions"),
+  tutorialButton: $("#tutorialButton"), chipRewardButton: $("#chipRewardButton"), rankingButton: $("#rankingButton"), historyButton: $("#historyButton"),
   createRoomForm: $("#createRoomForm"), roomName: $("#roomName"), maxPlayers: $("#maxPlayers"), minBet: $("#minBet"),
   roomPrivacy: $("#roomPrivacy"), roomPassword: $("#roomPassword"), roomPasswordLabel: $("#roomPasswordLabel"), allowSpectators: $("#allowSpectators"),
   roomCodeInput: $("#roomCodeInput"), joinRoomPassword: $("#joinRoomPassword"), joinCodeButton: $("#joinCodeButton"), spectateCodeButton: $("#spectateCodeButton"), quickJoinButton: $("#quickJoinButton"), roomList: $("#roomList"),
@@ -47,6 +48,19 @@ function showToast(message, isError = false) {
   els.toast.classList.toggle("error", isError);
   els.toast.classList.add("show");
   toastTimer = setTimeout(() => els.toast.classList.remove("show"), 2600);
+}
+
+function setMobileMenuOpen(open) {
+  if (!els.topMenuActions || !els.mobileMenuButton) return;
+  const shouldOpen = Boolean(open);
+  els.topMenuActions.classList.toggle("open", shouldOpen);
+  els.mobileMenuButton.classList.toggle("open", shouldOpen);
+  els.mobileMenuButton.setAttribute("aria-expanded", String(shouldOpen));
+  els.mobileMenuButton.textContent = shouldOpen ? "✕ 닫기" : "☰ 메뉴";
+}
+
+function closeMobileMenu() {
+  setMobileMenuOpen(false);
 }
 
 async function api(url, options = {}) {
@@ -1060,6 +1074,28 @@ els.chatForm.addEventListener("submit", async (event) => {
     await emitAck("chat-message", { text });
     els.chatInput.value = "";
   } catch (error) { showToast(error.message, true); }
+});
+
+els.mobileMenuButton?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  setMobileMenuOpen(!els.topMenuActions?.classList.contains("open"));
+});
+
+els.topMenuActions?.addEventListener("click", (event) => {
+  event.stopPropagation();
+  if (event.target.closest("button")) closeMobileMenu();
+});
+
+document.addEventListener("click", (event) => {
+  if (!event.target.closest(".top-actions")) closeMobileMenu();
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") closeMobileMenu();
+});
+
+window.addEventListener("resize", () => {
+  if (window.innerWidth > 680) closeMobileMenu();
 });
 
 els.tutorialButton.addEventListener("click", showTutorial);
