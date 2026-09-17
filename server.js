@@ -10,6 +10,7 @@ const { Server } = require("socket.io");
 const { createAdapter } = require("@socket.io/mongo-adapter");
 const { connectDB, getDB, closeDB } = require("./src/db");
 const { createToken, verifyToken, authMiddleware } = require("./src/auth");
+const { roomExpiresAt, roomNotExpiredFilter } = require("./src/roomLifecycle");
 
 if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET가 환경 변수에 설정되어 있지 않습니다.");
@@ -216,7 +217,9 @@ const ROOM_LOCK_MAX_ATTEMPTS = 180;
 
 async function loadRoom(code) {
   const db = getDB();
-  const room = await db.collection(ROOM_COLLECTION).findOne({ code });
+  const room = await db.collection(ROOM_COLLECTION).findOne({
+    $and: [{ code }, roomNotExpiredFilter()]
+  });
   if (!room) return null;
   delete room._id;
   // _lock은 MongoDB에서 방 변경을 직렬화하기 위한 내부 필드이므로
@@ -230,12 +233,17 @@ async function acquireRoomLock(code, owner) {
   const now = new Date();
   const result = await db.collection(ROOM_COLLECTION).updateOne(
     {
-      code,
-      $or: [
-        { _lock: { $exists: false } },
-        { _lock: null },
-        { "_lock.expiresAt": { $lte: now } },
-        { "_lock.owner": owner }
+      $and: [
+        { code },
+        roomNotExpiredFilter(now),
+        {
+          $or: [
+            { _lock: { $exists: false } },
+            { _lock: null },
+            { "_lock.expiresAt": { $lte: now } },
+            { "_lock.owner": owner }
+          ]
+        }
       ]
     },
     {
@@ -243,7 +251,10 @@ async function acquireRoomLock(code, owner) {
         _lock: {
           owner,
           expiresAt: new Date(Date.now() + ROOM_LOCK_TTL_MS)
-        }
+        },
+        // 잠금을 획득한 요청이 처리되는 동안 TTL 삭제가 일어나지 않도록
+        // 방 만료 시간도 함께 연장합니다.
+        expiresAt: roomExpiresAt()
       }
     }
   );
@@ -280,7 +291,7 @@ async function withRoomLock(code, task) {
     if (attempt === 0 || attempt % 15 === 0) {
       const db = getDB();
       const exists = await db.collection(ROOM_COLLECTION).findOne(
-        { code },
+        { $and: [{ code }, roomNotExpiredFilter()] },
         { projection: { _id: 1 } }
       );
       if (!exists) throw new Error("방을 찾을 수 없습니다.");
@@ -295,7 +306,7 @@ async function withRoomLock(code, task) {
 async function findUserRoom(userId) {
   const db = getDB();
   const room = await db.collection(ROOM_COLLECTION).findOne(
-    { "players.userId": userId },
+    { $and: [{ "players.userId": userId }, roomNotExpiredFilter()] },
     { projection: { _id: 0, code: 1 } }
   );
   return room?.code || null;
@@ -304,7 +315,13 @@ async function findUserRoom(userId) {
 async function saveRoom(room) {
   const db = getDB();
   room.revision = (Number(room.revision) || 0) + 1;
-  const doc = { ...room, playersCount: room.players?.length || 0, updatedAt: new Date() };
+  const now = new Date();
+  const doc = {
+    ...room,
+    playersCount: room.players?.length || 0,
+    updatedAt: now,
+    expiresAt: roomExpiresAt(now)
+  };
   delete doc._id;
   delete doc._lock;
   await db.collection(ROOM_COLLECTION).updateOne(
@@ -406,7 +423,7 @@ async function publicRoomList() {
   const db = getDB();
   const roomDocs = await db.collection(ROOM_COLLECTION)
     .find(
-      { status: "WAITING" },
+      { $and: [{ status: "WAITING" }, roomNotExpiredFilter()] },
       { projection: { _id: 0, code: 1, name: 1, maxPlayers: 1, minBet: 1, playersCount: 1, "players.userId": 1 } }
     )
     .sort({ updatedAt: -1 })

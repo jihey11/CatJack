@@ -1,4 +1,5 @@
 const { MongoClient } = require("mongodb");
+const { setupRoomLifecycle } = require("./roomLifecycle");
 
 let client;
 let database;
@@ -21,6 +22,7 @@ async function connectDB() {
   await database.collection("rooms").createIndex({ code: 1 }, { unique: true });
   await database.collection("rooms").createIndex({ "players.userId": 1 });
   await database.collection("rooms").createIndex({ status: 1, updatedAt: -1 });
+  await setupRoomLifecycle(database);
 
   return database;
 }
