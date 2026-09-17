@@ -11,6 +11,129 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function roomUnlockedFilter(now = new Date()) {
+  return {
+    $or: [
+      { _lock: { $exists: false } },
+      { _lock: null },
+      { "_lock.expiresAt": { $lte: now } }
+    ]
+  };
+}
+
+function generateRoomCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
+
+// 새 방 생성은 코드 존재 여부를 먼저 조회하지 않고 insertOne을 바로 시도합니다.
+// 코드 충돌(11000)이 발생한 경우에만 새 코드를 만들어 재시도하여 DB 왕복을 줄입니다.
+async function createRoom(roomInput) {
+  const db = getDB();
+  const rooms = db.collection(ROOM_COLLECTION);
+
+  for (let tries = 0; tries < 30; tries += 1) {
+    const now = new Date();
+    const room = {
+      ...roomInput,
+      code: generateRoomCode(),
+      revision: 1,
+      playersCount: roomInput.players?.length || 0,
+      spectatorsCount: roomInput.spectators?.length || 0,
+      updatedAt: now,
+      expiresAt: roomExpiresAt(now)
+    };
+    delete room._id;
+    delete room._lock;
+
+    try {
+      await rooms.insertOne(room);
+      delete room._id;
+      return room;
+    } catch (error) {
+      if (error?.code === 11000) continue;
+      throw error;
+    }
+  }
+
+  throw new Error("방 코드를 생성하지 못했습니다. 다시 시도하세요.");
+}
+
+async function atomicReconnectPlayer(code, userId, socketId) {
+  const db = getDB();
+  const rooms = db.collection(ROOM_COLLECTION);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const now = new Date();
+    const room = await rooms.findOneAndUpdate(
+      {
+        $and: [
+          { code },
+          { "players.userId": userId },
+          roomNotExpiredFilter(now),
+          roomUnlockedFilter(now)
+        ]
+      },
+      {
+        $set: {
+          "players.$.socketId": socketId,
+          "players.$.connected": true,
+          "players.$.disconnectedAt": null,
+          updatedAt: now,
+          expiresAt: roomExpiresAt(now)
+        },
+        $inc: { revision: 1 }
+      },
+      { returnDocument: "after", includeResultMetadata: false, projection: { _id: 0, _lock: 0 } }
+    );
+
+    if (room) return room;
+    if (attempt < 4) await sleep(35 + attempt * 20);
+  }
+
+  return null;
+}
+
+// WAITING 방 참가를 MongoDB의 단일 원자적 업데이트로 처리합니다.
+// 기존 방식의 lock 획득 -> 재조회 -> 저장 -> unlock 네 번의 왕복을 한 번으로 줄입니다.
+async function atomicJoinWaitingRoom(code, player) {
+  const db = getDB();
+  const rooms = db.collection(ROOM_COLLECTION);
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const now = new Date();
+    const room = await rooms.findOneAndUpdate(
+      {
+        $and: [
+          { code, status: "WAITING", "players.userId": { $ne: player.userId } },
+          roomNotExpiredFilter(now),
+          roomUnlockedFilter(now),
+          {
+            $expr: {
+              $lt: [
+                { $size: { $ifNull: ["$players", []] } },
+                "$maxPlayers"
+              ]
+            }
+          }
+        ]
+      },
+      {
+        $pull: { spectators: { userId: player.userId } },
+        $push: { players: player },
+        $set: { updatedAt: now, expiresAt: roomExpiresAt(now) },
+        $inc: { revision: 1 }
+      },
+      { returnDocument: "after", includeResultMetadata: false, projection: { _id: 0, _lock: 0 } }
+    );
+
+    if (room) return room;
+    if (attempt < 4) await sleep(35 + attempt * 20);
+  }
+
+  return null;
+}
+
 async function loadRoom(code) {
   const db = getDB();
   const room = await db.collection(ROOM_COLLECTION).findOne({
@@ -164,8 +287,6 @@ async function publicRoomList() {
           minBet: 1,
           status: 1,
           allowSpectators: 1,
-          playersCount: 1,
-          spectatorsCount: 1,
           "players.userId": 1,
           "spectators.userId": 1
         }
@@ -177,8 +298,8 @@ async function publicRoomList() {
 
   return roomDocs
     .map((room) => {
-      const players = Number.isFinite(room.playersCount) ? room.playersCount : (room.players?.length || 0);
-      const spectators = Number.isFinite(room.spectatorsCount) ? room.spectatorsCount : (room.spectators?.length || 0);
+      const players = room.players?.length || 0;
+      const spectators = room.spectators?.length || 0;
       const allowSpectators = room.allowSpectators !== false;
       const canJoin = room.status === "WAITING" && players < room.maxPlayers;
       const canSpectate = allowSpectators;
@@ -201,6 +322,9 @@ async function publicRoomList() {
 module.exports = {
   ROOM_COLLECTION,
   loadRoom,
+  createRoom,
+  atomicReconnectPlayer,
+  atomicJoinWaitingRoom,
   withRoomLock,
   findUserRoom,
   saveRoom,

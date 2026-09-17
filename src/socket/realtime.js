@@ -13,11 +13,13 @@ const {
 } = require("../game/blackjack");
 const {
   loadRoom,
+  createRoom,
+  atomicReconnectPlayer,
+  atomicJoinWaitingRoom,
   withRoomLock,
   findUserRoom,
   saveRoom,
   deleteRoom,
-  randomRoomCode,
   publicRoomList
 } = require("../rooms/roomStore");
 
@@ -60,8 +62,9 @@ async function verifyRoomAccess(room, password) {
 }
 
 function makePlayer(user, socket, room) {
+  const userId = user?._id?.toString?.() || String(user?.id || user?.userId || "");
   return {
-    userId: user._id.toString(),
+    userId,
     nickname: user.nickname,
     socketId: socket.id,
     connected: true,
@@ -650,6 +653,21 @@ io.on("connection", (socket) => {
     try {
       const db = getDB();
 
+      // 같은 소켓에서 직전 생성은 끝났는데 ACK만 늦거나 유실된 경우에는
+      // DB lock을 다시 잡지 않고 현재 방을 즉시 복구합니다.
+      if (socket.data.roomCode) {
+        const current = await loadRoom(socket.data.roomCode);
+        const role = current ? roomMemberRole(current, socket.user.id) : null;
+        if (current && role) {
+          const state = roomState(current);
+          socket.emit("room-state", state);
+          callback({ ok: true, code: current.code, reused: true, role });
+          return;
+        }
+        socket.data.roomCode = null;
+        socket.data.roomRole = null;
+      }
+
       // 이전 요청에서 방은 생성됐지만 ACK만 유실됐을 수 있으므로
       // 이미 소속된 방이 있으면 새로 만들지 않고 해당 방으로 복구합니다.
       const existingCode = await findUserRoom(socket.user.id);
@@ -703,10 +721,6 @@ io.on("connection", (socket) => {
         }
       }
 
-      const freshUser = await db.collection("users").findOne({ _id: new ObjectId(socket.user.id) });
-      if (!freshUser) throw new Error("사용자를 찾을 수 없습니다.");
-
-      const code = await randomRoomCode();
       const maxPlayers = Math.min(4, Math.max(1, Number(payload.maxPlayers) || 4));
       const minBet = normalizeBet(payload.minBet || 10);
       const name = String(payload.name || `${socket.user.nickname}의 방`).trim().slice(0, 24) || "고양이 블랙잭 방";
@@ -718,8 +732,7 @@ io.on("connection", (socket) => {
       }
 
       const passwordHash = roomPassword ? await bcrypt.hash(roomPassword, 8) : null;
-      const room = {
-        code,
+      const roomTemplate = {
         name,
         hostId: socket.user.id,
         maxPlayers,
@@ -735,12 +748,13 @@ io.on("connection", (socket) => {
         dealerRunning: false,
         messages: [],
         spectators: [],
-        revision: 0,
         players: []
       };
-      room.players.push(makePlayer(freshUser, socket, room));
+      roomTemplate.players.push(makePlayer(socket.user, socket, roomTemplate));
 
-      await saveRoom(room);
+      // 코드 중복 확인용 findOne + saveRoom(upsert) 대신 insertOne 한 번으로 생성합니다.
+      const room = await createRoom(roomTemplate);
+      const code = room.code;
       socket.data.roomCode = code;
       socket.data.roomRole = "PLAYER";
       socket.join(code);
@@ -758,59 +772,65 @@ io.on("connection", (socket) => {
     try {
       const code = String(payload.code || "").trim().toUpperCase();
       if (!code) throw new Error("방 코드를 입력하세요.");
-      if (!await loadRoom(code)) throw new Error("존재하지 않는 방입니다.");
 
-      const conflictingRoom = await findConflictingUserRoom(socket.user.id, code);
+      // 대상 방 조회와 다른 방 소속 여부 확인은 서로 의존하지 않으므로 동시에 실행합니다.
+      const [snapshot, conflictingRoom] = await Promise.all([
+        loadRoom(code),
+        findConflictingUserRoom(socket.user.id, code)
+      ]);
+
+      if (!snapshot) throw new Error("존재하지 않는 방입니다.");
       if (conflictingRoom) throw new Error("이미 다른 방에서 게임 중입니다.");
+      ensureSpectators(snapshot);
 
-      let rejoined = false;
-      await withRoomLock(code, async () => {
-        const room = await loadRoom(code);
-        if (!room) throw new Error("존재하지 않는 방입니다.");
-        ensureSpectators(room);
-
-        const existing = room.players.find((p) => p.userId === socket.user.id);
-        if (existing) {
-          const previousSocketId = existing.socketId;
-          existing.socketId = socket.id;
-          existing.connected = true;
-          existing.disconnectedAt = null;
-          socket.data.roomCode = code;
-          socket.data.roomRole = "PLAYER";
-          socket.join(code);
-          await emitRoom(room);
-          rejoined = true;
-
-          if (previousSocketId && previousSocketId !== socket.id) {
-            io.in(previousSocketId).disconnectSockets(true);
-          }
-          return;
-        }
-
-        const existingSpectatorIndex = room.spectators.findIndex((item) => item.userId === socket.user.id);
-        if (room.status !== "WAITING") throw new Error("이미 게임이 시작된 방입니다. 관전으로 참가할 수 있습니다.");
-        if (room.players.length >= room.maxPlayers) throw new Error("방이 가득 찼습니다. 관전으로 참가할 수 있습니다.");
-
-        if (existingSpectatorIndex < 0) {
-          await verifyRoomAccess(room, payload.password);
-        }
-
-        const db = getDB();
-        const freshUser = await db.collection("users").findOne({ _id: new ObjectId(socket.user.id) });
-        if (!freshUser) throw new Error("사용자를 찾을 수 없습니다.");
-
-        // 같은 방을 관전 중이었다면 플레이어로 전환합니다.
-        if (existingSpectatorIndex >= 0) room.spectators.splice(existingSpectatorIndex, 1);
-        room.players.push(makePlayer(freshUser, socket, room));
+      const existing = snapshot.players.find((p) => p.userId === socket.user.id);
+      if (existing) {
+        const previousSocketId = existing.socketId || null;
+        const room = await atomicReconnectPlayer(code, socket.user.id, socket.id);
+        if (!room) throw new Error("방 상태를 갱신 중입니다. 잠시 후 다시 시도하세요.");
 
         socket.data.roomCode = code;
         socket.data.roomRole = "PLAYER";
         socket.join(code);
-        await emitRoom(room);
-      });
+        const state = roomState(room);
+        socket.emit("room-state", state);
+        io.to(code).emit("room-state", state);
+        callback({ ok: true, code, rejoined: true, role: "PLAYER" });
 
+        if (previousSocketId && previousSocketId !== socket.id) {
+          try { io.in(previousSocketId).disconnectSockets(true); }
+          catch (error) { console.error("이전 소켓 종료 실패:", error); }
+        }
+
+        emitRoomList().catch((error) => console.error("방 목록 갱신 실패:", error));
+        return;
+      }
+
+      const existingSpectator = snapshot.spectators.some((item) => item.userId === socket.user.id);
+      if (snapshot.status !== "WAITING") throw new Error("이미 게임이 시작된 방입니다. 관전으로 참가할 수 있습니다.");
+      if (snapshot.players.length >= snapshot.maxPlayers) throw new Error("방이 가득 찼습니다. 관전으로 참가할 수 있습니다.");
+      if (!existingSpectator) await verifyRoomAccess(snapshot, payload.password);
+
+      const player = makePlayer(socket.user, socket, snapshot);
+      const room = await atomicJoinWaitingRoom(code, player);
+      if (!room) {
+        const latest = await loadRoom(code);
+        if (!latest) throw new Error("존재하지 않는 방입니다.");
+        if (latest.status !== "WAITING") throw new Error("이미 게임이 시작된 방입니다. 관전으로 참가할 수 있습니다.");
+        if (latest.players.length >= latest.maxPlayers) throw new Error("방이 가득 찼습니다. 관전으로 참가할 수 있습니다.");
+        throw new Error("방 상태를 갱신 중입니다. 잠시 후 다시 시도하세요.");
+      }
+
+      socket.data.roomCode = code;
+      socket.data.roomRole = "PLAYER";
+      socket.join(code);
+      const state = roomState(room);
+      socket.emit("room-state", state);
+      io.to(code).emit("room-state", state);
+
+      // 성공 ACK를 방 목록 전체 갱신보다 먼저 돌려 사용자의 대기 시간을 줄입니다.
+      callback({ ok: true, code, rejoined: false, role: "PLAYER" });
       emitRoomList().catch((error) => console.error("방 목록 갱신 실패:", error));
-      callback({ ok: true, code, rejoined, role: "PLAYER" });
     } catch (error) {
       callback({ ok: false, error: error.message });
     }
